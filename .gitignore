@@ -10,3 +10,6 @@ audit_store.jsonl
 backend/audit_store.jsonl
 HALO-new/
 *.exe
+backend/storage/exports/*
+!backend/storage/exports/.gitkeep
+
