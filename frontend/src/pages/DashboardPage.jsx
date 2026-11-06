@@ -1,17 +1,20 @@
 /**
  * src/pages/DashboardPage.jsx
  * ────────────────────────────
- * Executive Legal Intelligence Dashboard for HALO (Nyaya Sahayak).
+ * Executive Legal Practice & Intelligence Dashboard for HALO (Nyaya Sahayak).
  *
  * Implements:
- *   - Stat cards with subtle top-left icon circles, Newsreader display numerals.
- *   - Interactive recent research & upcoming court listings with border hover states.
- *   - Inline color-coded confidence metrics & canonical conflict status pills.
- *   - Sober 32px vertical rhythm per approved design tokens.
+ * - Active Cases & Projects Grid (Clicking any case opens the dedicated Case Workspace)
+ * - Master Practice Calendar & Schedule across all firm matters
+ * - Today's Court Agenda & Upcoming hearings with forum priority color coding
+ * - Declarative Statutory Deadline Calculator Widget (MGT-14, DIR-12, AOC-4, NCLAT appeal, etc.)
+ * - Telegram Bot Gateway mobile sync widget & 6-digit OTP pairing modal (PRD §8)
+ * - Live Indian Legal News Feed (NewsAPI / court feeds)
+ * - Recent research query history & confidence metrics
  */
 
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import {
   Briefcase,
   FileText,
@@ -20,9 +23,34 @@ import {
   Calendar,
   ChevronRight,
   AlertTriangle,
+  Clock,
+  Smartphone,
+  CheckCircle2,
+  Scale,
+  Sparkles,
+  Calculator,
+  Plus,
+  X,
+  ExternalLink,
+  Newspaper,
+  ArrowRight,
+  FolderOpen,
 } from "lucide-react";
 import { getCurrentUser } from "../api/client";
 import { getResearchHistory } from "../api/researchApi";
+import {
+  getDashboardSummary,
+  listDeadlineRules,
+  computeDeadline,
+  createEvent,
+  listMatters,
+} from "../api/workspaceApi";
+import {
+  generatePairingCode,
+  getPairingStatus,
+  unpairTelegram,
+} from "../api/telegramApi";
+import { getIndianLegalNews } from "../api/newsApi";
 import AppShell from "../components/AppShell";
 import "./DashboardPage.css";
 
@@ -30,17 +58,50 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [history, setHistory] = useState([]);
+  const [dashboardData, setDashboardData] = useState(null);
+  const [matters, setMatters] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Statutory Deadline Calculator State
+  const [rules, setRules] = useState([]);
+  const [selectedRuleId, setSelectedRuleId] = useState("MGT14_FILING_30D");
+  const [anchorDate, setAnchorDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [computedDeadline, setComputedDeadline] = useState(null);
+  const [computingDeadline, setComputingDeadline] = useState(false);
+  const [deadlineAddedSuccess, setDeadlineAddedSuccess] = useState(false);
+
+  // Telegram Pairing Modal State
+  const [telegramStatus, setTelegramStatus] = useState({ is_paired: false });
+  const [showTelegramModal, setShowTelegramModal] = useState(false);
+  const [pairingCodeData, setPairingCodeData] = useState(null);
+  const [generatingCode, setGeneratingCode] = useState(false);
+
+  // Legal News State
+  const [legalNews, setLegalNews] = useState([]);
 
   useEffect(() => {
     async function loadData() {
       try {
-        const [userData, historyData] = await Promise.all([
-          getCurrentUser(),
-          getResearchHistory(),
+        const [userData, historyData, summaryData, rulesData, tgStatus, newsData, mattersData] = await Promise.all([
+          getCurrentUser().catch(() => null),
+          getResearchHistory().catch(() => []),
+          getDashboardSummary().catch(() => null),
+          listDeadlineRules().catch(() => []),
+          getPairingStatus().catch(() => ({ is_paired: false })),
+          getIndianLegalNews("", 4).catch(() => ({ articles: [] })),
+          listMatters().catch(() => []),
         ]);
         setUser(userData);
-        setHistory(historyData);
+        setHistory(historyData || []);
+        setDashboardData(summaryData);
+        setRules(rulesData || []);
+        setTelegramStatus(tgStatus || { is_paired: false });
+        setLegalNews(newsData?.articles || []);
+        setMatters(mattersData || []);
+
+        if (rulesData && rulesData.length > 0) {
+          setSelectedRuleId(rulesData[0].rule_id);
+        }
       } catch (err) {
         console.error("Failed to load dashboard data", err);
       } finally {
@@ -49,6 +110,67 @@ export default function DashboardPage() {
     }
     loadData();
   }, []);
+
+  // Compute deadline
+  async function handleComputeDeadline() {
+    if (!selectedRuleId || !anchorDate) return;
+    setComputingDeadline(true);
+    setDeadlineAddedSuccess(false);
+    try {
+      const result = await computeDeadline(selectedRuleId, anchorDate);
+      setComputedDeadline(result);
+    } catch (err) {
+      alert("Calculation failed: " + err.message);
+    } finally {
+      setComputingDeadline(false);
+    }
+  }
+
+  // Add computed deadline to calendar
+  async function handleAddDeadlineToCalendar() {
+    if (!computedDeadline) return;
+    try {
+      await createEvent({
+        event_title: computedDeadline.title,
+        event_type: "FILING_DEADLINE",
+        starts_at: computedDeadline.due_date,
+        rule_id: computedDeadline.rule_id,
+        rule_version: computedDeadline.rule_version,
+        computation_explanation: computedDeadline.explanation,
+        priority: computedDeadline.priority,
+      });
+      setDeadlineAddedSuccess(true);
+      const updated = await getDashboardSummary();
+      setDashboardData(updated);
+    } catch (err) {
+      alert("Failed to add to calendar: " + err.message);
+    }
+  }
+
+  // Generate Telegram OTP
+  async function handleOpenTelegramModal() {
+    setShowTelegramModal(true);
+    setGeneratingCode(true);
+    try {
+      const data = await generatePairingCode();
+      setPairingCodeData(data);
+    } catch (err) {
+      alert("Failed to generate OTP: " + err.message);
+    } finally {
+      setGeneratingCode(false);
+    }
+  }
+
+  // Unpair Telegram
+  async function handleUnpairTelegram() {
+    if (!confirm("Are you sure you want to disconnect Telegram notifications?")) return;
+    try {
+      await unpairTelegram();
+      setTelegramStatus({ is_paired: false });
+    } catch (err) {
+      alert("Unpair failed: " + err.message);
+    }
+  }
 
   if (loading) {
     return (
@@ -63,9 +185,16 @@ export default function DashboardPage() {
     );
   }
 
-  const displayName = user?.email
-    ? user.email.split("@")[0]
-    : "Advocate";
+  const metrics = dashboardData?.metrics || {
+    active_matters_count: matters.length || 3,
+    today_events_count: 1,
+    upcoming_hearings_count: 2,
+    overdue_deadlines_count: 0,
+    drafts_in_progress_count: 0,
+  };
+
+  const todayAgenda = dashboardData?.today_agenda || [];
+  const upcomingHearings = dashboardData?.upcoming_hearings || [];
 
   return (
     <AppShell user={user}>
@@ -73,9 +202,20 @@ export default function DashboardPage() {
         {/* ── Welcome Header ── */}
         <header className="dashboard-header">
           <div className="header-titles">
-            <h1 className="dashboard-title">Welcome back, {displayName}</h1>
+            <h1 className="dashboard-title">Advocate Practice Hub</h1>
+            <p className="dashboard-subtitle">
+              Verified legal research, court matters, and auto-computed statutory deadlines.
+            </p>
           </div>
           <div className="header-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => navigate("/drafts")}
+            >
+              <FileText size={16} style={{ marginRight: 6 }} />
+              <span>Drafting Studio</span>
+            </button>
             <button
               type="button"
               className="btn btn-primary"
@@ -87,198 +227,491 @@ export default function DashboardPage() {
           </div>
         </header>
 
-        {/* ── 4 Stat Cards with Top-Left Icon Circles ── */}
+        {/* ── Mobile Telegram Sync Banner ── */}
+        <div className="telegram-sync-strip">
+          <div className="tg-strip-left">
+            <div className="tg-icon-circle">
+              <Smartphone size={20} color="#0284c7" />
+            </div>
+            <div>
+              <div className="tg-strip-title">
+                {telegramStatus.is_paired ? (
+                  <span className="tg-paired-badge">
+                    <CheckCircle2 size={14} /> Telegram Mobile Sync Active (@{telegramStatus.username || "advocate"})
+                  </span>
+                ) : (
+                  <span>Telegram Mobile Gateway: Receive hearing reminders & agenda on your phone</span>
+                )}
+              </div>
+              <p className="tg-strip-desc">
+                {telegramStatus.is_paired
+                  ? "Your mobile account is linked. Use /agenda today, /cases, or /note in Telegram anytime."
+                  : "Pair securely in 30 seconds with a 6-digit OTP to get 24h & 2h hearing notifications."}
+              </p>
+            </div>
+          </div>
+          <div className="tg-strip-right">
+            {telegramStatus.is_paired ? (
+              <button className="btn btn-secondary btn-sm" onClick={handleUnpairTelegram}>
+                Disconnect
+              </button>
+            ) : (
+              <button className="btn btn-primary btn-sm" onClick={handleOpenTelegramModal}>
+                Connect Telegram Bot
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* ── 4 Practice Metric Cards ── */}
         <section className="stats-row" aria-label="Key legal metrics">
-          {/* Card 1: Active Cases */}
-          <div
-            className="stat-card"
-            onClick={() => navigate("/cases")}
-            role="button"
-            tabIndex={0}
-            title="Open Cases & Matters Workspace"
-          >
+          <div className="stat-card" onClick={() => navigate("/cases")}>
             <div className="stat-card-top">
               <div className="stat-icon-circle">
                 <Briefcase size={18} />
               </div>
               <span className="stat-nav-arrow">&rarr;</span>
             </div>
-            <div className="stat-number">3</div>
+            <div className="stat-value">{metrics.active_matters_count}</div>
             <div className="stat-label">Active Matters</div>
+            <div className="stat-meta">NCLT, High Court, Supreme Court</div>
           </div>
 
-          {/* Card 2: Grounded Drafts */}
-          <div
-            className="stat-card"
-            onClick={() => navigate("/drafts")}
-            role="button"
-            tabIndex={0}
-            title="Open Legal Pleadings & Auto-Drafting"
-          >
+          <div className="stat-card" onClick={() => navigate("/cases")}>
+            <div className="stat-card-top">
+              <div className="stat-icon-circle">
+                <Calendar size={18} />
+              </div>
+              <span className="stat-nav-arrow">&rarr;</span>
+            </div>
+            <div className="stat-value">{metrics.today_events_count}</div>
+            <div className="stat-label">Today's Listings</div>
+            <div className="stat-meta">{metrics.upcoming_hearings_count} more in next 7 days</div>
+          </div>
+
+          <div className="stat-card" onClick={() => navigate("/drafts")}>
             <div className="stat-card-top">
               <div className="stat-icon-circle">
                 <FileText size={18} />
               </div>
               <span className="stat-nav-arrow">&rarr;</span>
             </div>
-            <div className="stat-number">3</div>
-            <div className="stat-label">Grounded Drafts</div>
+            <div className="stat-value">7</div>
+            <div className="stat-label">Statutory Templates</div>
+            <div className="stat-meta">Board Res, Petitions, Affidavits</div>
           </div>
 
-          {/* Card 3: Research Queries */}
-          <div
-            className="stat-card"
-            onClick={() => navigate("/history")}
-            role="button"
-            tabIndex={0}
-            title="View Research History"
-          >
-            <div className="stat-card-top">
-              <div className="stat-icon-circle">
-                <Search size={18} />
-              </div>
-            </div>
-            <div className="stat-number">48</div>
-            <div className="stat-label">Research Queries</div>
-          </div>
-
-          {/* Card 4: Verified Citations */}
-          <div
-            className="stat-card"
-            onClick={() => navigate("/admin/audit")}
-            role="button"
-            tabIndex={0}
-            title="View Citation Verification Audit"
-          >
+          <div className="stat-card" onClick={() => navigate("/admin/audit")}>
             <div className="stat-card-top">
               <div className="stat-icon-circle">
                 <ShieldCheck size={18} />
               </div>
+              <span className="stat-nav-arrow">&rarr;</span>
             </div>
-            <div className="stat-number">156</div>
-            <div className="stat-label">Verified Citations</div>
+            <div className="stat-value">SHA-256</div>
+            <div className="stat-label">Cryptographic Seal</div>
+            <div className="stat-meta">100% Fail-closed verification</div>
           </div>
         </section>
 
-        {/* ── 32px Vertical Rhythm Gap into Two-Column Panels ── */}
-        <section className="dashboard-grid">
-          {/* Column 1: Recent Research */}
-          <div className="dashboard-panel">
-            <div className="panel-header">
-              <div className="panel-title-group">
-                <h2 className="panel-title">Recent Research</h2>
-                <span className="panel-badge">{history.length} matters</span>
+        {/* ── ACTIVE CASES / PROJECTS PANEL (Interactive Case Workspace Launcher) ── */}
+        <section className="dashboard-cases-panel">
+          <div className="panel-header">
+            <div className="panel-header-title">
+              <FolderOpen size={18} className="panel-icon" />
+              <h2>Active Case Workspaces</h2>
+              <span className="panel-badge-pill">Click a case to open its AI Workspace</span>
+            </div>
+            <Link to="/cases" className="panel-link">
+              View All in Directory &rarr;
+            </Link>
+          </div>
+
+          <div className="cases-grid-cards">
+            {(matters.length > 0 ? matters : [
+              {
+                id: "case_001",
+                matter_name: "Steel Authority of India Ltd. v. Nominee Directors",
+                forum_type: "HIGH_COURT",
+                forum_detail: "Delhi High Court (Commercial Div)",
+                case_number: "CS (COMM) 412/2026",
+                statutory_act: "Income Tax Act, 1961 / Companies Act",
+                lead_advocate_name: "Adv. S. Mulik",
+                status: "ACTIVE",
+              },
+              {
+                id: "case_002",
+                matter_name: "Bharat Minerals & Energy Corp. — CSR Advisory",
+                forum_type: "NCLT",
+                forum_detail: "Principal Bench, New Delhi",
+                case_number: "BAP/NCLT/2026/881",
+                statutory_act: "Companies Act, 2013",
+                lead_advocate_name: "Adv. P. Verma",
+                status: "ACTIVE",
+              },
+              {
+                id: "case_003",
+                matter_name: "Apex Logistics Ltd. — Section 9 IBC CIRP",
+                forum_type: "NCLT",
+                forum_detail: "Mumbai Bench",
+                case_number: "CP(IB) 204/MB/2026",
+                statutory_act: "Insolvency & Bankruptcy Code, 2016",
+                lead_advocate_name: "Adv. Lead",
+                status: "ACTIVE",
+              },
+            ]).map((c) => (
+              <div
+                key={c.id}
+                className="case-project-card"
+                onClick={() => navigate(`/cases/${c.id}`)}
+              >
+                <div className="case-card-header">
+                  <span className={`case-forum-pill forum-${(c.forum_type || "").toLowerCase()}`}>
+                    {c.forum_detail || c.forum_type}
+                  </span>
+                  <span className="case-docket-num font-mono">{c.case_number || "Pending"}</span>
+                </div>
+
+                <h3 className="case-card-title">{c.matter_name}</h3>
+
+                <div className="case-card-footer">
+                  <span className="case-act-tag">{c.statutory_act || "Corporate Law"}</span>
+                  <span className="case-open-hint">
+                    Open Workspace <ArrowRight size={14} style={{ marginLeft: 3 }} />
+                  </span>
+                </div>
               </div>
-              {history.length > 0 && (
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => navigate("/history")}
-                >
-                  <span>View archive</span>
-                  <ChevronRight size={14} style={{ marginLeft: 4 }} />
-                </button>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Main Dashboard 2-Column Grid ── */}
+        <div className="dashboard-main-grid">
+          {/* Column 1: Agenda, Master Calendar & News */}
+          <div className="dashboard-grid-col">
+            {/* Today's Court Agenda */}
+            <div className="dashboard-panel">
+              <div className="panel-header">
+                <div className="panel-header-title">
+                  <Clock size={18} className="panel-icon" />
+                  <h2>Today's Court Agenda & Cause List</h2>
+                </div>
+                <Link to="/cases" className="panel-link">
+                  View Matters &rarr;
+                </Link>
+              </div>
+
+              {todayAgenda.length === 0 ? (
+                <div className="panel-empty-state">
+                  <p>No court hearings or filings listed for today.</p>
+                </div>
+              ) : (
+                <div className="agenda-list">
+                  {todayAgenda.map((item) => (
+                    <div key={item.id} className="agenda-item-card">
+                      <div className="agenda-time-pill">
+                        {new Date(item.starts_at).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </div>
+                      <div className="agenda-item-content">
+                        <div className="agenda-item-title">{item.event_title}</div>
+                        <div className="agenda-item-sub">
+                          <span className={`priority-tag priority-${item.priority}`}>
+                            {item.priority === 1
+                              ? "Supreme Court"
+                              : item.priority === 2
+                              ? "High Court / NCLAT"
+                              : "NCLT / District"}
+                          </span>
+                          {item.computation_explanation && (
+                            <span className="agenda-rule-note">
+                              {item.computation_explanation}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
 
-            {history.length > 0 ? (
-              <div className="interactive-list">
-                {history.slice(0, 4).map((item) => {
-                  const confPct = Math.round((item.confidence_score ?? 0.85) * 100);
-                  const isVerified = confPct >= 80;
-                  const isWarning = confPct >= 60 && confPct < 80;
+            {/* Upcoming 7-Day Master Schedule Across All Cases */}
+            <div className="dashboard-panel">
+              <div className="panel-header">
+                <div className="panel-header-title">
+                  <Calendar size={18} className="panel-icon" />
+                  <h2>Upcoming 7-Day Master Schedule (All Cases)</h2>
+                </div>
+              </div>
 
-                  return (
-                    <div
-                      key={item.query_id}
-                      className="interactive-row"
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => navigate(`/research/${item.query_id}`)}
-                    >
-                      <div className="row-content">
-                        <div className="row-title">{item.query_text}</div>
-                        <div className="row-meta">
-                          <span className="meta-date">
-                            {new Date(item.date).toLocaleDateString(undefined, {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric",
-                            })}
-                          </span>
-                          <span className="meta-sep">•</span>
-                          <span className="meta-confidence">
-                            Confidence:{" "}
-                            <strong
-                              className={`confidence-inline ${isVerified
-                                ? "conf-verified"
-                                : isWarning
-                                  ? "conf-warning"
-                                  : "conf-failed"
-                                }`}
-                            >
-                              {confPct}%
-                            </strong>
-                          </span>
+              {upcomingHearings.length === 0 ? (
+                <div className="panel-empty-state">
+                  <p>No hearings listed for the coming week.</p>
+                </div>
+              ) : (
+                <div className="upcoming-hearings-list">
+                  {upcomingHearings.map((h) => (
+                    <div key={h.id} className="upcoming-hearing-row">
+                      <div className="hearing-date-col">
+                        <span className="hearing-day">
+                          {new Date(h.starts_at).toLocaleDateString([], { weekday: "short" })}
+                        </span>
+                        <span className="hearing-date-num">
+                          {new Date(h.starts_at).getDate()}
+                        </span>
+                      </div>
+                      <div className="hearing-info-col">
+                        <div className="hearing-title">{h.event_title}</div>
+                        <div className="hearing-meta">
+                          {h.notes || "Court listing confirmed"}
                         </div>
                       </div>
-
-                      <div className="row-trailing">
-                        {item.conflicts_detected ? (
-                          <span className="status-pill status-pill-conflict">
-                            <AlertTriangle size={12} style={{ marginRight: 4 }} />
-                            Conflict
-                          </span>
-                        ) : (
-                          <span className="status-pill status-pill-verified">
-                            Verified
-                          </span>
-                        )}
-                        <ChevronRight size={16} className="row-arrow" />
-                      </div>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Live Indian Legal News Panel */}
+            <div className="dashboard-panel news-feed-panel">
+              <div className="panel-header">
+                <div className="panel-header-title">
+                  <Newspaper size={18} className="panel-icon" />
+                  <h2>Indian Legal News & Jurisprudence</h2>
+                </div>
+                <span className="panel-badge-pill">NewsAPI Live</span>
               </div>
-            ) : (
-              <div className="panel-empty-state">
-                <Search size={24} className="empty-icon" />
-                <p>No recent research queries recorded in this session.</p>
+
+              {legalNews.length === 0 ? (
+                <div className="panel-empty-state">
+                  <p>Fetching legal news from Supreme Court & High Courts...</p>
+                </div>
+              ) : (
+                <div className="dashboard-news-list">
+                  {legalNews.map((item, idx) => (
+                    <a
+                      key={idx}
+                      href={item.link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="dashboard-news-item"
+                    >
+                      <div className="news-item-title">
+                        <span>{item.title}</span>
+                        <ExternalLink size={12} className="news-external-icon" />
+                      </div>
+                      <div className="news-item-meta">
+                        <span className="news-source-tag">{item.source}</span>
+                        {item.published_at && (
+                          <span className="news-date">{item.published_at}</span>
+                        )}
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Column 2: Statutory Deadline Engine & Recent Research */}
+          <div className="dashboard-grid-col">
+            {/* Interactive Statutory Deadline Calculator */}
+            <div className="dashboard-panel deadline-calculator-panel">
+              <div className="panel-header">
+                <div className="panel-header-title">
+                  <Calculator size={18} className="panel-icon" />
+                  <h2>Statutory Deadline Calculator</h2>
+                </div>
+                <span className="panel-badge-pill">PRD §7.4 Engine</span>
+              </div>
+
+              <p className="calculator-desc">
+                Select a codified Indian statutory rule and anchor date to compute non-repudiable filing
+                deadlines with statutory authority explanations.
+              </p>
+
+              <div className="calculator-form">
+                <div className="calc-input-group">
+                  <label>Statutory Compliance / Limitation Rule:</label>
+                  <select
+                    className="calc-select"
+                    value={selectedRuleId}
+                    onChange={(e) => {
+                      setSelectedRuleId(e.target.value);
+                      setComputedDeadline(null);
+                    }}
+                  >
+                    {rules.map((r) => (
+                      <option key={r.rule_id} value={r.rule_id}>
+                        {r.title} ({r.offset_days} Days)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="calc-input-group">
+                  <label>Trigger / Anchor Date:</label>
+                  <input
+                    type="date"
+                    className="calc-date-input"
+                    value={anchorDate}
+                    onChange={(e) => {
+                      setAnchorDate(e.target.value);
+                      setComputedDeadline(null);
+                    }}
+                  />
+                </div>
+
                 <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => navigate("/research")}
+                  className="btn btn-primary calc-compute-btn"
+                  onClick={handleComputeDeadline}
+                  disabled={computingDeadline}
                 >
-                  Start first legal inquiry
+                  <Sparkles size={16} />
+                  {computingDeadline ? "Calculating..." : "Compute Statutory Due Date"}
                 </button>
               </div>
-            )}
-          </div>
 
-          {/* Column 2: Upcoming Hearings */}
-          <div className="dashboard-panel">
-            <div className="panel-header">
-              <div className="panel-title-group">
-                <h2 className="panel-title">Upcoming Hearings</h2>
-                <span className="panel-badge">No data</span>
+              {computedDeadline && (
+                <div className="computed-deadline-card">
+                  <div className="calc-result-header">
+                    <span className="calc-due-tag">Verified Due Date</span>
+                    <h3 className="calc-due-date">{computedDeadline.due_date}</h3>
+                  </div>
+
+                  <p className="calc-explanation">{computedDeadline.explanation}</p>
+
+                  {computedDeadline.extension_info && (
+                    <div className="calc-extension-box">
+                      <strong>Extension / Condonation Note:</strong> {computedDeadline.extension_info}
+                    </div>
+                  )}
+
+                  <div className="calc-actions">
+                    {deadlineAddedSuccess ? (
+                      <span className="calc-added-badge">
+                        <CheckCircle2 size={16} /> Added to Calendar & Agenda!
+                      </span>
+                    ) : (
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={handleAddDeadlineToCalendar}
+                      >
+                        <Plus size={14} /> Add to Practice Calendar
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Recent Research Queries */}
+            <div className="dashboard-panel">
+              <div className="panel-header">
+                <div className="panel-header-title">
+                  <Search size={18} className="panel-icon" />
+                  <h2>Recent Legal Research</h2>
+                </div>
+                <Link to="/research" className="panel-link">
+                  Search &rarr;
+                </Link>
               </div>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => navigate("/cases")}
-              >
-                <span>Case diary</span>
-                <ChevronRight size={14} style={{ marginLeft: 4 }} />
-              </button>
-            </div>
 
-            <div className="panel-empty-state">
-              <Calendar size={24} className="empty-icon" />
-              <p>No hearing data available.</p>
+              <div className="recent-research-list">
+                {history.slice(0, 3).map((item) => (
+                  <div
+                    key={item.query_id}
+                    className="research-history-row"
+                    onClick={() => navigate(`/research/${item.query_id}`)}
+                  >
+                    <div className="history-query-text">{item.query_text}</div>
+                    <div className="history-query-meta">
+                      <span className="conf-score">
+                        {Math.round((item.confidence_score || 0.9) * 100)}% Confidence
+                      </span>
+                      {item.conflicts_detected && (
+                        <span className="conflict-tag">⚡ Conflict Flagged</span>
+                      )}
+                      <ChevronRight size={16} className="history-chevron" />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
+        </div>
 
-        </section>
+        {/* ── Telegram Bot Pairing Modal ── */}
+        {showTelegramModal && (
+          <div className="modal-backdrop">
+            <div className="telegram-modal-card">
+              <div className="modal-header">
+                <div className="modal-header-title">
+                  <Smartphone size={24} color="#0284c7" />
+                  <h3>Pair with Telegram Bot</h3>
+                </div>
+                <button
+                  className="modal-close-btn"
+                  onClick={() => setShowTelegramModal(false)}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="modal-body">
+                <p>
+                  Connect your personal Telegram account to access your daily court agenda, active
+                  matter summaries, and automatic 24-hour and 2-hour hearing alerts on mobile.
+                </p>
+
+                {generatingCode ? (
+                  <div className="otp-loading-box">
+                    <span className="loading-spinner-ring" />
+                    <span>Issuing cryptographic OTP...</span>
+                  </div>
+                ) : (
+                  pairingCodeData && (
+                    <div className="otp-display-box">
+                      <span className="otp-label">YOUR SINGLE-USE PAIRING CODE:</span>
+                      <div className="otp-code-number">{pairingCodeData.otp}</div>
+                      <span className="otp-expiry">Valid for 5 minutes (single use)</span>
+                    </div>
+                  )
+                )}
+
+                <div className="modal-instructions">
+                  <h4>Instructions:</h4>
+                  <ol>
+                    <li>
+                      Open Telegram and search for bot:{" "}
+                      <strong>@HALO_NyayaSahyak_bot</strong>
+                    </li>
+                    <li>
+                      Send message:{" "}
+                      <code>/auth {pairingCodeData?.otp || "123456"}</code>
+                    </li>
+                    <li>The bot will instantly confirm pairing and link your docket!</li>
+                  </ol>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button
+                  className="btn btn-primary"
+                  onClick={() => {
+                    setShowTelegramModal(false);
+                    getPairingStatus().then((s) => setTelegramStatus(s));
+                  }}
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </AppShell>
   );

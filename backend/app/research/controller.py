@@ -56,19 +56,45 @@ def _seed_initial_history():
 _seed_initial_history()
 
 
+from pydantic import BaseModel
+
+class UniversalQueryInput(BaseModel):
+    query_text: Optional[str] = None
+    query: Optional[str] = None
+    jurisdiction: Optional[str] = "Supreme Court of India"
+    court_level: Optional[str] = "All Courts"
+    date_range: Optional[str] = "all"
+    candidate_answer: Optional[str] = None
+
+
 @router.post("/query", response_model=QuerySubmitResponse)
-def submit_query(req: ResearchQueryRequest):
+@router.post("", response_model=QuerySubmitResponse)
+def submit_query(req: UniversalQueryInput):
     """Executes full legal retrieval, answer generation, and verification pipeline on query text."""
+    effective_text = (req.query_text or req.query or "").strip()
+    if not effective_text:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="query or query_text must be provided.",
+        )
+
+    norm_req = ResearchQueryRequest(
+        query_text=effective_text,
+        jurisdiction=req.jurisdiction,
+        court_level=req.court_level,
+        date_range=req.date_range,
+        candidate_answer=req.candidate_answer,
+    )
     query_id = f"q_{uuid.uuid4().hex[:6]}"
 
     # 1. Candidate Answer Formulation (Retrieval + LLM Generation or explicit candidate)
     candidate_passages: List[Dict[str, Any]] = []
-    if req.candidate_answer and req.candidate_answer.strip():
-        raw_answer = req.candidate_answer.strip()
+    if norm_req.candidate_answer and norm_req.candidate_answer.strip():
+        raw_answer = norm_req.candidate_answer.strip()
     else:
         # Step A: Retrieve authoritative legal passages
         try:
-            candidate_passages = retrieve_passages(req.query_text, top_k=5)
+            candidate_passages = retrieve_passages(norm_req.query_text, top_k=5)
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -77,7 +103,7 @@ def submit_query(req: ResearchQueryRequest):
 
         # Step B: Generate grounded candidate answer via Groq LLM
         try:
-            raw_answer = generate_answer(req.query_text, candidate_passages)
+            raw_answer = generate_answer(norm_req.query_text, candidate_passages)
         except GenerationServiceError as ge:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

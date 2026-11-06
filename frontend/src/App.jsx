@@ -22,6 +22,7 @@ import EvidenceViewPage from "./pages/EvidenceViewPage";
 import ConflictViewPage from "./pages/ConflictViewPage";
 import AuditTrailPage from "./pages/AuditTrailPage";
 import CasesPage from "./pages/CasesPage";
+import CaseWorkspacePage from "./pages/CaseWorkspacePage";
 import DraftingPage from "./pages/DraftingPage";
 
 export default function App() {
@@ -93,6 +94,15 @@ export default function App() {
         element={
           <ProtectedRoute>
             <CasesPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/cases/:caseId"
+        element={
+          <ProtectedRoute>
+            <CaseWorkspacePage />
           </ProtectedRoute>
         }
       />

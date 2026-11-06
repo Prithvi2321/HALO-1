@@ -17,6 +17,7 @@ import PageHeader from "../components/PageHeader";
 import StatusBadge from "../components/StatusBadge";
 import { getCurrentUser } from "../api/client";
 import { getResearchHistory } from "../api/researchApi";
+import { listMatters, createMatter, addMatterNote } from "../api/workspaceApi";
 import "./CasesPage.css";
 
 // ─── Initial Seed Cases ──────────────────────────────────────────────────────
@@ -179,26 +180,51 @@ export default function CasesPage() {
   // New Note State
   const [newNoteText, setNewNoteText] = useState("");
 
-  // Load cases from localStorage or initial seed
+  // Load cases from live backend workspace API with local fallback
   useEffect(() => {
     getCurrentUser().then(setUser).catch(() => null);
 
-    const saved = localStorage.getItem("halo_cases_store");
-    if (saved) {
+    async function loadCasesData() {
       try {
-        setCases(JSON.parse(saved));
-      } catch (e) {
+        const [apiMatters, hist] = await Promise.all([
+          listMatters().catch(() => []),
+          getResearchHistory().catch(() => []),
+        ]);
+        setHistoryQueries(hist || []);
+
+        if (apiMatters && apiMatters.length > 0) {
+          const adapted = apiMatters.map((m) => ({
+            id: m.id,
+            case_number: m.case_number || "Pending",
+            title: m.matter_name,
+            client_name: m.forum_detail || "Corporate Matter",
+            court: `${m.forum_type} — ${m.forum_detail || "Main"}`,
+            category: m.statutory_act || "Corporate Law",
+            status: m.status || "ACTIVE",
+            created_date: (m.created_at || "").split("T")[0] || new Date().toISOString().split("T")[0],
+            last_updated: (m.updated_at || "").split("T")[0] || new Date().toISOString().split("T")[0],
+            description: `${m.matter_name}. Opposing Parties: ${m.opposing_parties || "N/A"}. Lead Advocate: ${m.lead_advocate_name || "Advocate"}`,
+            attached_queries: [],
+            notes: [],
+            pinned_authorities: [
+              {
+                id: "auth_1",
+                citation: m.statutory_act || "Companies Act, 2013",
+                court: m.forum_type,
+                proposition: `Governed under ${m.statutory_act || "Companies Act, 2013"}`
+              }
+            ],
+          }));
+          setCases(adapted);
+        } else {
+          const saved = localStorage.getItem("halo_cases_store");
+          setCases(saved ? JSON.parse(saved) : INITIAL_CASES);
+        }
+      } catch {
         setCases(INITIAL_CASES);
       }
-    } else {
-      setCases(INITIAL_CASES);
-      localStorage.setItem("halo_cases_store", JSON.stringify(INITIAL_CASES));
     }
-
-    // Load history for attaching
-    getResearchHistory()
-      .then((hist) => setHistoryQueries(hist || []))
-      .catch(() => setHistoryQueries([]));
+    loadCasesData();
   }, []);
 
   // Save changes to localStorage
@@ -225,30 +251,60 @@ export default function CasesPage() {
   });
 
   // Handle New Case Creation
-  const handleCreateCase = (e) => {
+  const handleCreateCase = async (e) => {
     e.preventDefault();
     if (!newCaseForm.title.trim()) return;
 
-    const newCase = {
-      id: `case_${Date.now()}`,
-      case_number: newCaseForm.case_number || `MATTER-${Date.now().toString().slice(-4)}`,
-      title: newCaseForm.title,
-      client_name: newCaseForm.client_name || "Confidential Client",
-      court: newCaseForm.court || "High Court",
-      category: newCaseForm.category,
-      status: "ACTIVE",
-      created_date: new Date().toISOString().split("T")[0],
-      last_updated: new Date().toISOString().split("T")[0],
-      description: newCaseForm.description,
-      attached_queries: [],
-      notes: [],
-      pinned_authorities: [],
-    };
+    try {
+      const created = await createMatter({
+        matter_name: newCaseForm.title,
+        case_number: newCaseForm.case_number,
+        forum_type: "HIGH_COURT",
+        forum_detail: newCaseForm.court || "High Court",
+        statutory_act: newCaseForm.category || "Companies Act, 2013",
+        status: "ACTIVE",
+      });
 
-    const updated = [newCase, ...cases];
-    updateCases(updated);
-    setShowNewCaseModal(false);
-    setSelectedCaseId(newCase.id);
+      const newCase = {
+        id: created.id,
+        case_number: created.case_number || `MATTER-${Date.now().toString().slice(-4)}`,
+        title: created.matter_name,
+        client_name: newCaseForm.client_name || "Confidential Client",
+        court: created.forum_detail || "High Court",
+        category: created.statutory_act,
+        status: "ACTIVE",
+        created_date: new Date().toISOString().split("T")[0],
+        last_updated: new Date().toISOString().split("T")[0],
+        description: newCaseForm.description,
+        attached_queries: [],
+        notes: [],
+        pinned_authorities: [],
+      };
+
+      const updated = [newCase, ...cases];
+      updateCases(updated);
+      setShowNewCaseModal(false);
+      setSelectedCaseId(newCase.id);
+    } catch {
+      const fallbackCase = {
+        id: `case_${Date.now()}`,
+        case_number: newCaseForm.case_number || `MATTER-${Date.now().toString().slice(-4)}`,
+        title: newCaseForm.title,
+        client_name: newCaseForm.client_name || "Confidential Client",
+        court: newCaseForm.court || "High Court",
+        category: newCaseForm.category,
+        status: "ACTIVE",
+        created_date: new Date().toISOString().split("T")[0],
+        last_updated: new Date().toISOString().split("T")[0],
+        description: newCaseForm.description,
+        attached_queries: [],
+        notes: [],
+        pinned_authorities: [],
+      };
+      updateCases([fallbackCase, ...cases]);
+      setShowNewCaseModal(false);
+      setSelectedCaseId(fallbackCase.id);
+    }
     setNewCaseForm({
       title: "",
       case_number: "",
@@ -499,13 +555,19 @@ export default function CasesPage() {
 
               <div className="cs-dossier-actions">
                 <button
+                  className="btn btn-primary"
+                  onClick={() => navigate(`/cases/${selectedCase.id}`)}
+                >
+                  🤖 Open AI Case Workspace
+                </button>
+                <button
                   className="btn btn-secondary"
                   onClick={() => setSelectedCaseId(null)}
                 >
                   &larr; Back to Cases
                 </button>
                 <button
-                  className="btn btn-primary"
+                  className="btn btn-secondary"
                   onClick={() => setShowExportModal(true)}
                 >
                   Export Case Legal Brief

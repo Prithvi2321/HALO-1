@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
 import { getResearchResult } from "../api/researchApi";
 import AppShell from "../components/AppShell";
 import PageHeader from "../components/PageHeader";
@@ -359,10 +360,10 @@ export default function ResearchResultPage() {
           <div className="rrp-left">
             <h2 className="rrp-section-heading">AI-Generated Answer</h2>
 
-            <div className="rrp-answer-prose">
-              {paragraphs.map((para, i) => (
-                <p key={i} className="rrp-para">{para}</p>
-              ))}
+            <div className="rrp-answer-prose markdown-prose">
+              <ReactMarkdown>
+                {answer_text}
+              </ReactMarkdown>
             </div>
 
             {claims.length > 0 && (
