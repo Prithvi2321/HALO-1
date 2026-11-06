@@ -106,34 +106,55 @@ def normalize_context(template: TemplateManifest, raw_inputs: Dict[str, Any]) ->
         except Exception:
             pass
 
-    # Cheque / Amount fields normalization
-    if "cheque_amount" in ctx and ctx["cheque_amount"]:
-        try:
-            amt = float(ctx["cheque_amount"])
-            ctx["formatted_currency"] = format_indian_currency(amt)
-            ctx["amount_in_words"] = number_to_indian_words(amt)
-        except Exception:
-            pass
+    # Ensure target_language has a default
+    if "target_language" not in ctx or not ctx["target_language"]:
+        ctx["target_language"] = "en"
+
+    # Cheque / Rent / Fee / Amount fields normalization
+    amount_keys = ["cheque_amount", "monthly_rent", "security_deposit", "consultant_fee"]
+    for amt_field in amount_keys:
+        if amt_field in ctx and ctx[amt_field] is not None and str(ctx[amt_field]).strip():
+            try:
+                clean_str = str(ctx[amt_field]).replace(",", "").replace("₹", "").replace("/-", "").strip()
+                amt = float(clean_str)
+                fmt_curr = format_indian_currency(amt)
+                words = number_to_indian_words(amt)
+                ctx[f"{amt_field}_formatted"] = fmt_curr
+                ctx[f"{amt_field}_words"] = words
+                if amt_field == "cheque_amount" or "formatted_currency" not in ctx:
+                    ctx["formatted_currency"] = fmt_curr
+                    ctx["amount_in_words"] = words
+            except Exception:
+                pass
 
     return ctx
 
 
-def assemble_document(template_id: str, input_data: Dict[str, Any]) -> Tuple[str, str, VerificationReport]:
+def assemble_document(template_id: str, input_data: Dict[str, Any], allow_partial: bool = False) -> Tuple[str, str, VerificationReport]:
     """
     Validates, normalizes, verifies clauses via VerificationPort,
     and renders text. Returns (rendered_text, content_sha256, verification_report).
+    If allow_partial=True, missing required fields are populated with clean placeholders for live preview.
     """
     tmpl = get_template(template_id)
     if not tmpl:
         raise AssemblyError(f"Template '{template_id}' not found in registry.")
 
     # 1. Validate
-    errors = validate_input(tmpl.schema_definition, input_data)
-    if errors:
-        raise AssemblyError("Validation failed for document fields.", field_errors=errors)
+    if not allow_partial:
+        errors = validate_input(tmpl.schema_definition, input_data)
+        if errors:
+            raise AssemblyError("Validation failed for document fields.", field_errors=errors)
 
     # 2. Normalize
-    ctx = normalize_context(tmpl, input_data)
+    effective_inputs = dict(input_data)
+    if allow_partial:
+        for f in tmpl.schema_definition.get("fields", []):
+            f_id = f.get("id")
+            if f_id not in effective_inputs or effective_inputs[f_id] is None or effective_inputs[f_id] == "":
+                effective_inputs[f_id] = f"[Pending: {f.get('label', f_id)}]"
+
+    ctx = normalize_context(tmpl, effective_inputs)
 
     # 3. Jinja2 Render
     jinja_tmpl = Template(tmpl.body_template)
@@ -253,11 +274,25 @@ def export_pdf(rendered_text: str, content_hash: str, filename_base: str) -> str
         bottomMargin=54,
     )
 
+    font_name = "Helvetica"
+    font_bold = "Helvetica-Bold"
+    try:
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        import os
+        nirmala_path = "C:/Windows/Fonts/Nirmala.ttc"
+        if os.path.exists(nirmala_path):
+            pdfmetrics.registerFont(TTFont("IndicFont", nirmala_path, subfontIndex=0))
+            font_name = "IndicFont"
+            font_bold = "IndicFont"
+    except Exception:
+        pass
+
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
         "DocTitle",
         parent=styles["Normal"],
-        fontName="Helvetica-Bold",
+        fontName=font_bold,
         fontSize=12,
         leading=16,
         alignment=1,  # Centered
@@ -267,7 +302,7 @@ def export_pdf(rendered_text: str, content_hash: str, filename_base: str) -> str
     body_style = ParagraphStyle(
         "DocBody",
         parent=styles["Normal"],
-        fontName="Helvetica",
+        fontName=font_name,
         fontSize=10,
         leading=14,
         textColor=colors.HexColor("#0f172a"),

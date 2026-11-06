@@ -75,7 +75,19 @@ export async function getDraftPreview(draftId) {
   return data;
 }
 
-export async function exportDraft(draftId, format = "pdf") {
-  const { data } = await api.post(`/drafts/${draftId}/exports`, { format });
+export async function exportDraft(draftId, format = "pdf", allowPartial = true) {
+  const { data } = await api.post(`/drafts/${draftId}/exports`, { format, allow_partial: allowPartial });
+  return data;
+}
+
+export async function smartIntake(templateId, message, fileContent, fileName, currentInputs, targetLanguage) {
+  const { data } = await api.post("/drafts/smart-intake", {
+    template_id: templateId,
+    message,
+    file_content: fileContent,
+    file_name: fileName,
+    current_inputs: currentInputs,
+    target_language: targetLanguage,
+  });
   return data;
 }

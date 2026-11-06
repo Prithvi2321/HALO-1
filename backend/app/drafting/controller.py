@@ -17,6 +17,8 @@ Endpoints:
 
 import json
 import uuid
+import re
+from datetime import datetime, date
 from typing import Dict, List, Any, Optional
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Depends, Query, status
@@ -56,6 +58,16 @@ class DraftInputsUpdateRequest(BaseModel):
 
 class ExportRequest(BaseModel):
     format: str = "pdf"  # docx | pdf
+    allow_partial: bool = True
+
+
+class SmartIntakeRequest(BaseModel):
+    template_id: str
+    message: Optional[str] = None
+    file_content: Optional[str] = None
+    file_name: Optional[str] = None
+    current_inputs: Dict[str, Any] = Field(default_factory=dict)
+    target_language: str = "en"
 
 
 # ─── Template Endpoints ───────────────────────────────────────────────────────
@@ -255,7 +267,7 @@ def api_preview_draft(
     inputs = json.loads(versions[0].input_json) if versions else {}
 
     try:
-        rendered_text, content_hash, _ = assemble_document(draft.template_id, inputs)
+        rendered_text, content_hash, _ = assemble_document(draft.template_id, inputs, allow_partial=True)
     except AssemblyError as ae:
         return HTMLResponse(
             content=f"<div style='color:#b91c1c;padding:20px;font-family:sans-serif;'><h3>Validation Pending</h3><p>{str(ae)}</p></div>"
@@ -305,7 +317,7 @@ def api_export_draft(
     inputs = json.loads(latest.input_json)
 
     try:
-        rendered_text, content_hash, _ = assemble_document(draft.template_id, inputs)
+        rendered_text, content_hash, _ = assemble_document(draft.template_id, inputs, allow_partial=req.allow_partial)
     except AssemblyError as ae:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -357,3 +369,213 @@ def api_download_export_file(filename: str):
         media_type=media_type,
         filename=filename
     )
+
+
+@router.post("/drafts/smart-intake")
+def api_smart_intake(req: SmartIntakeRequest):
+    """
+    Intelligent Conversational & Document Intake Engine:
+    Parses user natural chat responses and uploaded file text in English, Hindi, or Hinglish,
+    extracts structured legal variables (PAN, Aadhaar, names, addresses, amounts, dates, tenure),
+    auto-populates template schema fields, and guides the lawyer with conversational feedback.
+    """
+    tmpl = get_template(req.template_id)
+    if not tmpl:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Template '{req.template_id}' not found."
+        )
+
+    inputs = dict(req.current_inputs or {})
+    newly_extracted = []
+    
+    raw_texts = []
+    if req.message:
+        raw_texts.append(req.message)
+    if req.file_content:
+        raw_texts.append(req.file_content)
+    combined = "\n".join(raw_texts).strip()
+
+    # Detect language if mentioned
+    lower_comb = combined.lower()
+    if any(k in lower_comb for k in ["hindi", "हिंदी", "devnagari"]):
+        inputs["target_language"] = "hi"
+    elif any(k in lower_comb for k in ["bilingual", "द्विभाषी", "both languages"]):
+        inputs["target_language"] = "bilingual"
+    elif any(k in lower_comb for k in ["english", "अंग्रेजी"]):
+        inputs["target_language"] = "en"
+    elif req.target_language and "target_language" not in inputs:
+        inputs["target_language"] = req.target_language
+
+    # 1. PAN extraction
+    pans = re.findall(r'\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b', combined)
+    if pans:
+        fields = [f["id"] for f in tmpl.schema_definition.get("fields", [])]
+        if "landlord_pan" in fields and "landlord_pan" not in inputs:
+            inputs["landlord_pan"] = pans[0]
+            newly_extracted.append("landlord_pan")
+            if len(pans) > 1 and "tenant_pan" not in inputs:
+                inputs["tenant_pan"] = pans[1]
+                newly_extracted.append("tenant_pan")
+        elif "consultant_pan" in fields and "consultant_pan" not in inputs:
+            inputs["consultant_pan"] = pans[0]
+            newly_extracted.append("consultant_pan")
+
+    # 2. CIN extraction
+    cins = re.findall(r'\b[LU]\d{5}[A-Z]{2}\d{4}[A-Z]{3}\d{6}\b', combined)
+    if cins and "company_cin" in [f["id"] for f in tmpl.schema_definition.get("fields", [])] and "company_cin" not in inputs:
+        inputs["company_cin"] = cins[0]
+        newly_extracted.append("company_cin")
+
+    # 3. DIN extraction
+    dins = re.findall(r'\b(?:DIN\s*[:\-]?\s*)?(\d{8})\b', combined)
+    if dins and "director_din" in [f["id"] for f in tmpl.schema_definition.get("fields", [])] and "director_din" not in inputs:
+        inputs["director_din"] = dins[0]
+        newly_extracted.append("director_din")
+
+    # 4. Cheque Number extraction (6 digits)
+    chq_match = re.search(r'(?:cheque|chq|instrument|no\.?|#)\s*[:\-]?\s*(\d{6})\b', combined, re.IGNORECASE)
+    if chq_match and "cheque_no" in [f["id"] for f in tmpl.schema_definition.get("fields", [])] and "cheque_no" not in inputs:
+        inputs["cheque_no"] = chq_match.group(1)
+        newly_extracted.append("cheque_no")
+
+    # 5. Currency Amounts
+    def parse_lakh(s: str) -> Optional[int]:
+        m = re.search(r'([\d\.]+)\s*(?:lakh|lac|lacs|lakhs)', s, re.IGNORECASE)
+        if m:
+            return int(float(m.group(1)) * 100000)
+        return None
+
+    # Monthly rent
+    rent_match = re.search(r'(?:rent|kiraya|monthly rent|monthly)\s*(?:is|of|amount|@)?\s*[:\-]?\s*(?:₹|rs\.?|inr)?\s*(\d[\d,]+|\d+(?:\.\d+)?\s*lakh)', combined, re.IGNORECASE)
+    if rent_match and "monthly_rent" in [f["id"] for f in tmpl.schema_definition.get("fields", [])] and "monthly_rent" not in inputs:
+        val_str = rent_match.group(1).replace(",", "").strip()
+        lakh_val = parse_lakh(val_str)
+        inputs["monthly_rent"] = lakh_val if lakh_val else int(float(val_str))
+        newly_extracted.append("monthly_rent")
+
+    # Security Deposit
+    dep_match = re.search(r'(?:deposit|security|security deposit|advance)\s*(?:is|of|amount)?\s*[:\-]?\s*(?:₹|rs\.?|inr)?\s*(\d[\d,]+|\d+(?:\.\d+)?\s*lakh)', combined, re.IGNORECASE)
+    if dep_match and "security_deposit" in [f["id"] for f in tmpl.schema_definition.get("fields", [])] and "security_deposit" not in inputs:
+        val_str = dep_match.group(1).replace(",", "").strip()
+        lakh_val = parse_lakh(val_str)
+        inputs["security_deposit"] = lakh_val if lakh_val else int(float(val_str))
+        newly_extracted.append("security_deposit")
+
+    # General Fee / Cheque amount
+    amt_match = re.search(r'(?:amount|fee|sum of|cheque amount|for ₹|for rs\.?)\s*[:\-]?\s*(?:₹|rs\.?|inr)?\s*(\d[\d,]+|\d+(?:\.\d+)?\s*lakh)', combined, re.IGNORECASE)
+    if amt_match:
+        val_str = amt_match.group(1).replace(",", "").strip()
+        lakh_val = parse_lakh(val_str)
+        extracted_amt = lakh_val if lakh_val else int(float(val_str))
+        fields = [f["id"] for f in tmpl.schema_definition.get("fields", [])]
+        if "amount" in fields and "amount" not in inputs:
+            inputs["amount"] = extracted_amt
+            newly_extracted.append("amount")
+        if "fee_amount" in fields and "fee_amount" not in inputs:
+            inputs["fee_amount"] = extracted_amt
+            newly_extracted.append("fee_amount")
+
+    # 6. Dates
+    date_matches = re.findall(r'\b(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})\b', combined)
+    if date_matches:
+        d, m, y = date_matches[0]
+        iso_date = f"{y}-{int(m):02d}-{int(d):02d}"
+        for d_field in ["commencement_date", "effective_date", "cheque_date", "meeting_date"]:
+            if d_field in [f["id"] for f in tmpl.schema_definition.get("fields", [])] and d_field not in inputs:
+                inputs[d_field] = iso_date
+                newly_extracted.append(d_field)
+                break
+    else:
+        for d_field in ["commencement_date", "effective_date"]:
+            if d_field in [f["id"] for f in tmpl.schema_definition.get("fields", [])] and d_field not in inputs:
+                inputs[d_field] = date.today().isoformat()
+                newly_extracted.append(d_field)
+
+    # 7. Tenure & Lock-in
+    tenure_m = re.search(r'(\d+)\s*(?:months?|maheene|mahine|m)\s*(?:tenure|period|lease)?\b', combined, re.IGNORECASE)
+    if tenure_m and "tenure_months" in [f["id"] for f in tmpl.schema_definition.get("fields", [])] and "tenure_months" not in inputs:
+        inputs["tenure_months"] = int(tenure_m.group(1))
+        newly_extracted.append("tenure_months")
+
+    lockin_m = re.search(r'(?:lock[\s\-]?in|lockin)\s*(?:of|is|period)?\s*(\d+)\s*(?:months?|m)?', combined, re.IGNORECASE)
+    if lockin_m and "lock_in_months" in [f["id"] for f in tmpl.schema_definition.get("fields", [])] and "lock_in_months" not in inputs:
+        inputs["lock_in_months"] = int(lockin_m.group(1))
+        newly_extracted.append("lock_in_months")
+
+    notice_m = re.search(r'(?:notice|notice period)\s*(?:of|is)?\s*(\d+)\s*(?:days?|din)', combined, re.IGNORECASE)
+    if notice_m and "notice_period_days" in [f["id"] for f in tmpl.schema_definition.get("fields", [])] and "notice_period_days" not in inputs:
+        inputs["notice_period_days"] = int(notice_m.group(1))
+        newly_extracted.append("notice_period_days")
+
+    # 8. Names & Entities
+    ll_m = re.search(r'(?:landlord|lessor|owner|makan malik)\s*(?:is|name|:)?\s*([A-Za-z\s\.\'\-]+?)(?:,|\.|\sand\s|\stenant|\sresiding|\swith|$|\n)', combined, re.IGNORECASE)
+    if ll_m and "landlord_name" in [f["id"] for f in tmpl.schema_definition.get("fields", [])] and "landlord_name" not in inputs:
+        name_clean = ll_m.group(1).strip()
+        if len(name_clean) > 2:
+            inputs["landlord_name"] = name_clean
+            newly_extracted.append("landlord_name")
+
+    ten_m = re.search(r'(?:tenant|lessee|kirayedar)\s*(?:is|name|:)?\s*([A-Za-z\s\.\'\-]+?)(?:,|\.|\sand\s|\slandlord|\sresiding|\swith|$|\n)', combined, re.IGNORECASE)
+    if ten_m and "tenant_name" in [f["id"] for f in tmpl.schema_definition.get("fields", [])] and "tenant_name" not in inputs:
+        name_clean = ten_m.group(1).strip()
+        if len(name_clean) > 2:
+            inputs["tenant_name"] = name_clean
+            newly_extracted.append("tenant_name")
+
+    prem_m = re.search(r'(?:premises|property|flat|house|office|shop|situated at|address of property)\s*(?:is|at|:)?\s*([A-Za-z0-9\s,\-\/\#\.\'\&]+?)(?:\.|\n|monthly rent|rent|deposit|$)', combined, re.IGNORECASE)
+    if prem_m and "premises_address" in [f["id"] for f in tmpl.schema_definition.get("fields", [])] and "premises_address" not in inputs:
+        addr_clean = prem_m.group(1).strip()
+        if len(addr_clean) > 6:
+            inputs["premises_address"] = addr_clean
+            newly_extracted.append("premises_address")
+
+    # 9. Apply schema defaults for fields still unfilled
+    fields_list = tmpl.schema_definition.get("fields", [])
+    required_fields = [f for f in fields_list if f.get("required")]
+    for f in fields_list:
+        if f.get("default") is not None and f["id"] not in inputs:
+            inputs[f["id"]] = f["default"]
+
+    # Calculate completion percentage
+    filled_req = [f["id"] for f in required_fields if inputs.get(f["id"]) not in [None, ""]]
+    completion_percent = int((len(filled_req) / len(required_fields)) * 100) if required_fields else 100
+
+    unfilled = [f for f in required_fields if inputs.get(f["id"]) in [None, ""]]
+    unfilled_labels = [f.get("label", f["id"]) for f in unfilled]
+
+    is_hindi = inputs.get("target_language") == "hi"
+
+    if completion_percent >= 100:
+        if is_hindi:
+            ai_msg = "🎉 **अनुबंध पूर्णतः तैयार है!** सभी आवश्यक विवरण सफलतापूर्वक भर दिए गए हैं। आप दाईं ओर दस्तावेज़ का पूर्वावलोकन (Preview) देख सकते हैं और ऊपर दिए गए बटन से **DOCX** या **PDF** डाउनलोड कर सकते हैं।"
+        else:
+            ai_msg = "🎉 **Drafting Complete!** All mandatory legal details have been verified and populated. You can inspect the live legal preview on the right and click **Download DOCX** or **Download PDF** above to export."
+    else:
+        next_field = unfilled[0] if unfilled else None
+        next_label = next_field.get("label", "") if next_field else ""
+        
+        extracted_summary = ""
+        if newly_extracted:
+            extracted_summary = f"✅ **Extracted {len(newly_extracted)} detail(s)**: *{', '.join(newly_extracted)}*.\n\n"
+        
+        if is_hindi:
+            ai_msg = (
+                f"{extracted_summary}📋 **प्रगति: {completion_percent}% पूर्ण**\n\n"
+                f"कृपया निम्नलिखित विवरण प्रदान करें:\n"
+                f"👉 **{next_label}**"
+            )
+        else:
+            ai_msg = (
+                f"{extracted_summary}📋 **Progress: {completion_percent}% Completed**\n\n"
+                f"To finalize the document, please provide:\n"
+                f"👉 **{next_label}**"
+            )
+
+    return {
+        "updated_inputs": inputs,
+        "ai_response": ai_msg,
+        "completion_percent": completion_percent,
+        "missing_fields": unfilled_labels,
+        "newly_extracted_fields": newly_extracted
+    }

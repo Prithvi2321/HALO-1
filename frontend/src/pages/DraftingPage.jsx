@@ -1,15 +1,15 @@
 /**
  * src/pages/DraftingPage.jsx
  * ──────────────────────────
- * Grounded Legal Auto-Drafting Studio — PRD Phase 2 (v2.1)
+ * Grounded Legal Auto-Drafting Studio & Smart Forms Workspace — PRD Phase 2 (v2.1)
  *
  * Implements:
- * - Template gallery with search and category filters
- * - Dynamic form rendering from template JSON schema (zero-code forms)
- * - Multi-step wizard: Choose Template → Complete Form → Live Preview → Assemble & Export
- * - Autosave to draft versioning record
- * - Export to court-ready .docx and non-editable .pdf with embedded SHA-256 seal
- * - Verification seam badge (Protocol v2.1 PRD §13)
+ * - Smart Forms Directory with instant search and category filtering
+ * - Dedicated Form Workspace Window (similar to Case Workspace)
+ * - Unified AI Intake Assistant: Chat Q&A + Document Upload (Aadhaar, PAN, Cheque, Bills)
+ * - Multilingual Engine: English, हिंदी Devnagari, and Bilingual (द्विभाषी)
+ * - Real-Time Live Court-Ready Document Preview
+ * - Direct 1-Click Export to .DOCX and .PDF with embedded SHA-256 seal
  */
 
 import React, { useState, useEffect, useRef } from "react";
@@ -31,10 +31,17 @@ import {
   Copy,
   ExternalLink,
   Sparkles,
+  Paperclip,
+  Upload,
+  Send,
+  Languages,
+  Bot,
+  User as UserIcon,
+  X,
+  FileCheck,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import AppShell from "../components/AppShell";
-import PageHeader from "../components/PageHeader";
-import StatusBadge from "../components/StatusBadge";
 import DynamicFormRenderer from "../components/DynamicFormRenderer";
 import { getCurrentUser } from "../api/client";
 import {
@@ -46,18 +53,38 @@ import {
   generateDraft,
   getDraftPreview,
   exportDraft,
+  smartIntake,
 } from "../api/draftingApi";
 import { listMatters } from "../api/workspaceApi";
 import "./DraftingPage.css";
 
 const CATEGORIES = [
   { id: "ALL", label: "All Templates" },
+  { id: "AGREEMENT", label: "Agreements & Leases" },
+  { id: "NOTICE", label: "Statutory Notices" },
   { id: "CORPORATE_RESOLUTION", label: "Board Resolutions" },
   { id: "PETITION", label: "NCLT Petitions" },
   { id: "AFFIDAVIT", label: "Affidavits" },
-  { id: "NOTICE", label: "Statutory Notices" },
   { id: "COMPLIANCE", label: "ROC Compliance" },
 ];
+
+function readFileAsTextOrBase64(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    if (
+      file.type.includes("text") ||
+      file.name.endsWith(".txt") ||
+      file.name.endsWith(".json") ||
+      file.name.endsWith(".csv")
+    ) {
+      reader.onload = () => resolve(reader.result);
+      reader.readAsText(file);
+    } else {
+      reader.onload = () => resolve(reader.result);
+      reader.readAsDataURL(file);
+    }
+  });
+}
 
 export default function DraftingPage() {
   const navigate = useNavigate();
@@ -73,29 +100,43 @@ export default function DraftingPage() {
   const [selectedCategory, setSelectedCategory] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Stepper state: 'gallery' | 'form' | 'preview' | 'result'
-  const [step, setStep] = useState("gallery");
+  // Workspace / View state: 'gallery' | 'workspace'
+  const [viewMode, setViewMode] = useState("gallery");
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [templateDetail, setTemplateDetail] = useState(null);
   const [matters, setMatters] = useState([]);
   const [selectedMatterId, setSelectedMatterId] = useState("");
+
+  // Target Language: 'en' | 'hi' | 'bilingual'
+  const [targetLanguage, setTargetLanguage] = useState("en");
 
   // Form values & validation
   const [formValues, setFormValues] = useState({});
   const [formErrors, setFormErrors] = useState({});
   const [currentDraftId, setCurrentDraftId] = useState(null);
   const [saveStatus, setSaveStatus] = useState("saved"); // 'saving' | 'saved' | 'idle'
+  const [completionPercent, setCompletionPercent] = useState(0);
 
-  // Preview & Generation
+  // Left Pane Active Sub-tab: 'ai_intake' | 'form_inputs'
+  const [leftTab, setLeftTab] = useState("ai_intake");
+
+  // AI Intake Chat Stream
+  const [intakeMessages, setIntakeMessages] = useState([]);
+  const [intakeInput, setIntakeInput] = useState("");
+  const [attachedFile, setAttachedFile] = useState(null);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  // Live Preview State
   const [previewHtml, setPreviewHtml] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [assembledResult, setAssembledResult] = useState(null);
-  const [generating, setGenerating] = useState(false);
   const [exportingFormat, setExportingFormat] = useState(null);
 
   const autosaveTimerRef = useRef(null);
+  const chatBottomRef = useRef(null);
+  const fileInputRef = useRef(null);
 
-  // 1. Initial Load
+  // 1. Initial Data Load
   useEffect(() => {
     async function init() {
       try {
@@ -111,7 +152,9 @@ export default function DraftingPage() {
 
         if (preselectTemplateId) {
           const match = (tmpls || []).find((t) => t.id === preselectTemplateId);
-          if (match) handleSelectTemplate(match);
+          if (match) {
+            handleSelectTemplate(match);
+          }
         }
       } catch (err) {
         setError(err.message || "Failed to load drafting studio data.");
@@ -122,16 +165,27 @@ export default function DraftingPage() {
     init();
   }, [preselectTemplateId]);
 
-  // 2. Select Template & Load Full Schema
+  // Scroll chat to bottom on new messages
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [intakeMessages]);
+
+  // 2. Select Template & Open Dedicated Form Workspace Window
   async function handleSelectTemplate(tmpl) {
     try {
       setLoading(true);
+      setError(null);
       setSelectedTemplate(tmpl);
       const detail = await getTemplate(tmpl.id);
       setTemplateDetail(detail);
 
+      // Default language from schema if present
+      const langField = detail.schema_definition?.fields?.find((f) => f.id === "target_language");
+      const defaultLang = langField?.default || "en";
+      setTargetLanguage(defaultLang);
+
       // Prepopulate default field values from schema
-      const initial = {};
+      const initial = { target_language: defaultLang };
       if (detail.schema_definition?.fields) {
         detail.schema_definition.fields.forEach((f) => {
           if (f.default !== undefined) initial[f.id] = f.default;
@@ -142,109 +196,259 @@ export default function DraftingPage() {
 
       // Create draft record
       const draftRes = await createDraft(tmpl.id, tmpl.name, selectedMatterId || null, initial);
-      setCurrentDraftId(draftRes.draft?.id || null);
+      const draftId = draftRes.draft?.id || null;
+      setCurrentDraftId(draftId);
 
-      setStep("form");
+      // Load initial live preview HTML
+      if (draftId) {
+        setPreviewLoading(true);
+        try {
+          const initialHtml = await getDraftPreview(draftId);
+          setPreviewHtml(initialHtml);
+        } catch (previewErr) {
+          console.warn("Initial preview error:", previewErr);
+        } finally {
+          setPreviewLoading(false);
+        }
+      }
+
+      // Generate initial AI welcome message tailored to this specific legal instrument
+      let initialAiGreeting = "";
+      if (tmpl.id.includes("RENT")) {
+        initialAiGreeting =
+          `👋 **Welcome to the Smart Rent & Lease Studio!**\n\n` +
+          `I will help you draft an airtight, court-ready **Residential & Commercial Lease Agreement** pursuant to the *Transfer of Property Act, 1882*.\n\n` +
+          `**How you can proceed:**\n` +
+          `• **Type or answer prompts**: e.g., *"Landlord is Ramesh Sharma, monthly rent ₹35,000, 11 months tenure, deposit ₹70,000"*.\n` +
+          `• **Upload documents**: Drop electricity bills, rent receipts, or Aadhaar/PAN cards below (or click 📎) to auto-extract details.\n` +
+          `• **Switch language**: Select English, हिंदी Devnagari, or Bilingual anytime above!`;
+      } else if (tmpl.id.includes("138")) {
+        initialAiGreeting =
+          `👋 **Welcome to the Section 138 Cheque Bounce Notice Studio!**\n\n` +
+          `I will assist you in generating a statutory **15-Day Demand Notice** pursuant to *Section 138 proviso (b) of the Negotiable Instruments Act, 1881*.\n\n` +
+          `**How you can proceed:**\n` +
+          `• **Upload photos / scan**: Drop a photo of the dishonoured cheque leaf and bank return memo.\n` +
+          `• **Or type directly**: Provide drawer name, cheque number, amount, date of dishonour, and return memo reason.\n` +
+          `• All mandatory statutory recitals will be verified and formatted with live preview on the right.`;
+      } else if (tmpl.id.includes("NDA")) {
+        initialAiGreeting =
+          `👋 **Welcome to the Commercial NDA Studio!**\n\n` +
+          `We will prepare a comprehensive **Non-Disclosure Agreement (NDA)** pursuant to the *Indian Contract Act, 1872* with trade secret protection and injunctive relief covenants.\n\n` +
+          `**How you can proceed:**\n` +
+          `• Tell me the Disclosing and Receiving parties, term of confidentiality, and purpose of disclosure.\n` +
+          `• Or upload a term sheet / preliminary engagement letter to auto-populate.`;
+      } else if (tmpl.id.includes("CONSULTANT")) {
+        initialAiGreeting =
+          `👋 **Welcome to the Independent Consultant Agreement Studio!**\n\n` +
+          `Let's draft an independent contractor engagement agreement with intellectual property assignment and fee covenants.\n\n` +
+          `**How you can proceed:**\n` +
+          `• Provide client company details, consultant name, scope of services, and agreed fee amount.\n` +
+          `• Or upload a statement of work (SOW) or offer letter to extract parameters automatically.`;
+      } else {
+        initialAiGreeting =
+          `👋 **Welcome to the Smart Drafting Studio for ${tmpl.name}!**\n\n` +
+          `Governed by **${tmpl.statutory_anchor}**.\n\n` +
+          `You can converse in natural language, upload supporting documents, or switch to the structured form view anytime.`;
+      }
+
+      setIntakeMessages([
+        {
+          id: `ai_init_${Date.now()}`,
+          sender: "ai",
+          text: initialAiGreeting,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
+
+      // Calculate initial completion
+      const reqFields = (detail.schema_definition?.fields || []).filter((f) => f.required);
+      const filledReq = reqFields.filter((f) => initial[f.id] !== undefined && initial[f.id] !== "");
+      setCompletionPercent(
+        reqFields.length > 0 ? Math.round((filledReq.length / reqFields.length) * 100) : 100
+      );
+
+      setViewMode("workspace");
     } catch (err) {
-      setError("Failed to load template schema: " + err.message);
+      setError("Failed to open form workspace: " + err.message);
     } finally {
       setLoading(false);
     }
   }
 
-  // 3. Handle Form Changes with Autosave
-  function handleFieldChange(fieldId, value) {
-    setFormValues((prev) => {
-      const next = { ...prev, [fieldId]: value };
-      triggerAutosave(next);
-      return next;
-    });
+  // 3. Switch Language (English / Hindi / Bilingual)
+  async function handleLanguageChange(lang) {
+    setTargetLanguage(lang);
+    const nextValues = { ...formValues, target_language: lang };
+    setFormValues(nextValues);
 
-    if (formErrors[fieldId]) {
-      setFormErrors((prev) => {
-        const next = { ...prev };
-        delete next[fieldId];
-        return next;
-      });
+    if (currentDraftId) {
+      setPreviewLoading(true);
+      try {
+        await autosaveDraftInputs(currentDraftId, nextValues);
+        const updatedHtml = await getDraftPreview(currentDraftId);
+        setPreviewHtml(updatedHtml);
+      } catch (err) {
+        console.warn("Failed to update language preview:", err);
+      } finally {
+        setPreviewLoading(false);
+      }
     }
   }
 
-  function triggerAutosave(values) {
-    if (!currentDraftId) return;
+  // 4. Handle Direct Field Changes with Autosave
+  function handleFieldChange(fieldId, value) {
+    const next = { ...formValues, [fieldId]: value };
+    setFormValues(next);
+
+    if (formErrors[fieldId]) {
+      setFormErrors((prev) => {
+        const copy = { ...prev };
+        delete copy[fieldId];
+        return copy;
+      });
+    }
+
+    // Trigger debounced autosave & preview refresh
     setSaveStatus("saving");
     if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
 
     autosaveTimerRef.current = setTimeout(async () => {
+      if (!currentDraftId) return;
       try {
-        await autosaveDraftInputs(currentDraftId, values);
+        await autosaveDraftInputs(currentDraftId, next);
         setSaveStatus("saved");
+        const updatedPreview = await getDraftPreview(currentDraftId);
+        setPreviewHtml(updatedPreview);
       } catch {
         setSaveStatus("idle");
       }
-    }, 1500);
+    }, 800);
   }
 
-  // 4. Validate & Go to Live Preview
-  async function handleProceedToPreview() {
-    if (!currentDraftId) return;
-    setPreviewLoading(true);
-    setFormErrors({});
-    try {
-      // First save current inputs
-      await autosaveDraftInputs(currentDraftId, formValues);
-      setSaveStatus("saved");
+  // 5. Send Message / Document to AI Intake Assistant
+  async function handleSendIntakeMessage(overrideText = null, overrideFile = null) {
+    const textToSend = overrideText !== null ? overrideText : intakeInput.trim();
+    const fileToUpload = overrideFile || attachedFile;
 
-      // Generate preview HTML
-      const html = await getDraftPreview(currentDraftId);
-      setPreviewHtml(html);
-      setStep("preview");
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setPreviewLoading(false);
-    }
-  }
+    if (!textToSend && !fileToUpload) return;
 
-  // 5. Final Assembly & Generation
-  async function handleGenerateAssembledDocument() {
-    if (!currentDraftId) return;
-    setGenerating(true);
+    setIsExtracting(true);
     setError(null);
+
+    // Add user message to chat UI immediately
+    const userMsg = {
+      id: `u_${Date.now()}`,
+      sender: "user",
+      text: textToSend,
+      file: fileToUpload ? { name: fileToUpload.name, size: fileToUpload.size } : null,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    };
+
+    setIntakeMessages((prev) => [...prev, userMsg]);
+    setIntakeInput("");
+    setAttachedFile(null);
+
     try {
-      const result = await generateDraft(currentDraftId);
-      setAssembledResult(result);
-      setStep("result");
-    } catch (err) {
-      if (err.message && err.message.includes("Validation failed")) {
-        setError("Please review and fix validation errors before assembling.");
-        setStep("form");
-      } else {
-        setError(err.message || "Document assembly failed.");
+      let fileContent = "";
+      let fileName = "";
+      if (fileToUpload) {
+        fileName = fileToUpload.name;
+        fileContent = await readFileAsTextOrBase64(fileToUpload);
       }
+
+      // Call backend Smart Intake endpoint
+      const intakeRes = await smartIntake(
+        selectedTemplate.id,
+        textToSend,
+        fileContent,
+        fileName,
+        formValues,
+        targetLanguage
+      );
+
+      const updatedInputs = intakeRes.updated_inputs || {};
+      setFormValues(updatedInputs);
+      if (intakeRes.completion_percent !== undefined) {
+        setCompletionPercent(intakeRes.completion_percent);
+      }
+
+      // Save to draft version and refresh live preview immediately
+      if (currentDraftId) {
+        await autosaveDraftInputs(currentDraftId, updatedInputs);
+        const updatedPreview = await getDraftPreview(currentDraftId);
+        setPreviewHtml(updatedPreview);
+      }
+
+      // Add AI response to chat
+      const aiMsg = {
+        id: `ai_${Date.now()}`,
+        sender: "ai",
+        text: intakeRes.ai_response,
+        extracted: intakeRes.newly_extracted_fields || [],
+        missing: intakeRes.missing_fields || [],
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+
+      setIntakeMessages((prev) => [...prev, aiMsg]);
+    } catch (err) {
+      setError("AI intake failed: " + err.message);
     } finally {
-      setGenerating(false);
+      setIsExtracting(false);
     }
   }
 
-  // 6. Export Download Handler
+  // 6. Handle File Drag & Drop
+  function handleDragOver(e) {
+    e.preventDefault();
+    setIsDragging(true);
+  }
+
+  function handleDragLeave(e) {
+    e.preventDefault();
+    setIsDragging(false);
+  }
+
+  function handleFileDrop(e) {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      handleSendIntakeMessage("", files[0]);
+    }
+  }
+
+  function handleFileInputChange(e) {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      handleSendIntakeMessage("", files[0]);
+    }
+    e.target.value = "";
+  }
+
+  // 7. Direct Export Download (PDF / DOCX)
   async function handleDownloadExport(format) {
     if (!currentDraftId) return;
     setExportingFormat(format);
     try {
-      const res = await exportDraft(currentDraftId, format);
+      // Ensure latest values are saved
+      await autosaveDraftInputs(currentDraftId, formValues);
+      const res = await exportDraft(currentDraftId, format, true);
       if (res.download_url) {
         window.open(res.download_url, "_blank");
       }
     } catch (err) {
-      alert("Export failed: " + err.message);
+      alert(`Export to ${format.toUpperCase()} failed: ` + err.message);
     } finally {
       setExportingFormat(null);
     }
   }
 
-  // Filter templates
+  // Filter templates for Catalog view
   const filteredTemplates = templates.filter((t) => {
-    const matchCat = selectedCategory === "ALL" || t.category === selectedCategory;
+    const matchCat =
+      selectedCategory === "ALL" ||
+      t.category === selectedCategory ||
+      (selectedCategory === "AGREEMENT" && (t.category === "AGREEMENT" || t.id.includes("RENT") || t.id.includes("NDA") || t.id.includes("CONSULTANT")));
     const matchSearch =
       !searchQuery ||
       t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -256,49 +460,51 @@ export default function DraftingPage() {
   return (
     <AppShell user={user}>
       <div className="drafting-page-root">
-        <PageHeader
-          title="Drafting Studio"
-          description="Grounded, court-admissible legal instruments & pleadings with fail-closed cryptographic seals."
-          breadcrumbs={[
-            { label: "Dashboard", to: "/dashboard" },
-            { label: "Drafting Studio", to: "/drafts" },
-          ]}
-          actions={
-            step !== "gallery" ? (
-              <button
-                className="btn btn-secondary"
-                onClick={() => {
-                  setStep("gallery");
-                  setSelectedTemplate(null);
-                  setCurrentDraftId(null);
-                }}
-              >
-                <ArrowLeft size={16} /> Back to Catalog
-              </button>
-            ) : null
-          }
-        />
-
         {error && (
           <div className="drafting-alert error-alert">
             <AlertTriangle size={18} />
             <span>{error}</span>
+            <button className="alert-close-btn" onClick={() => setError(null)}>
+              <X size={14} />
+            </button>
           </div>
         )}
 
-        {/* ─── STEP 1: TEMPLATE GALLERY ────────────────────────────────────── */}
-        {step === "gallery" && (
-          <div className="drafting-gallery-section">
+        {/* ═══════════════════════════════════════════════════════════════════
+            VIEW 1: TEMPLATES CATALOG & SMART FORMS DIRECTORY
+        ═══════════════════════════════════════════════════════════════════ */}
+        {viewMode === "gallery" && (
+          <div className="drafting-gallery-view">
+            {/* Header Dossier */}
+            <div className="catalog-header-bar">
+              <div>
+                <h1 className="catalog-title">Legal Forms & Auto-Drafting Studio</h1>
+                <p className="catalog-subtitle">
+                  Court-ready statutory pleadings, commercial agreements, and corporate resolutions. Fill automatically via intelligent conversational intake or document upload with 1-click DOCX & PDF exports.
+                </p>
+              </div>
+              <div className="catalog-stats-pill">
+                <FileCheck size={16} />
+                <span>{templates.length || 10} Court-Approved Templates</span>
+              </div>
+            </div>
+
+            {/* Search & Category Filter Controls */}
             <div className="gallery-toolbar">
               <div className="gallery-search-wrap">
                 <Search size={18} className="search-icon" />
                 <input
                   type="text"
-                  placeholder="Search templates by act, title, or statutory anchor..."
+                  placeholder="Search forms by title, statutory act (e.g., Rent Agreement, Section 138, NDA, Companies Act)..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="gallery-search-input"
                 />
+                {searchQuery && (
+                  <button className="search-clear-btn" onClick={() => setSearchQuery("")}>
+                    <X size={16} />
+                  </button>
+                )}
               </div>
 
               <div className="gallery-pills">
@@ -314,36 +520,30 @@ export default function DraftingPage() {
               </div>
             </div>
 
+            {/* Template Cards Grid */}
             <div className="template-cards-grid">
               {filteredTemplates.map((tmpl) => (
                 <div key={tmpl.id} className="template-card">
                   <div className="template-card-header">
-                    <span className="template-cat-badge">{tmpl.category.replace("_", " ")}</span>
-                    <span className="template-format-tag">
-                      {(tmpl.output_formats || ["docx", "pdf"]).join(" • ").toUpperCase()}
+                    <span className="template-cat-badge">
+                      {tmpl.category === "AGREEMENT"
+                        ? "Agreement & Lease"
+                        : tmpl.category.replace("_", " ")}
                     </span>
+                    <span className="template-lang-pill">🌐 EN • HI • द्विभाषी</span>
                   </div>
 
                   <h3 className="template-card-title">{tmpl.name}</h3>
                   <p className="template-card-anchor">🏛️ {tmpl.statutory_anchor}</p>
                   <p className="template-card-desc">{tmpl.description}</p>
 
-                  {tmpl.controlling_precedent && (
-                    <div className="template-card-precedent">
-                      <span>Controlling Precedent:</span>
-                      <code>{tmpl.controlling_precedent}</code>
-                    </div>
-                  )}
-
                   <div className="template-card-footer">
-                    <span className="template-fields-count">
-                      {tmpl.field_count || 6} Form Fields
-                    </span>
+                    <span className="template-format-tag">DOCX • PDF</span>
                     <button
                       className="btn btn-primary"
                       onClick={() => handleSelectTemplate(tmpl)}
                     >
-                      Start Draft <ArrowRight size={16} />
+                      Open Smart Workspace <ArrowRight size={16} />
                     </button>
                   </div>
                 </div>
@@ -352,182 +552,445 @@ export default function DraftingPage() {
           </div>
         )}
 
-        {/* ─── STEP 2: DYNAMIC FORM COMPLETION ─────────────────────────────── */}
-        {step === "form" && templateDetail && (
-          <div className="drafting-form-layout">
-            <div className="drafting-form-card">
-              <div className="form-card-topbar">
-                <div>
-                  <div className="template-anchor-pill">
-                    🏛️ {templateDetail.statutory_anchor}
-                  </div>
-                  <h2 className="form-title">{templateDetail.title}</h2>
-                  <p className="form-subtitle">{templateDetail.description}</p>
-                </div>
-
-                <div className="autosave-badge">
-                  {saveStatus === "saving" && <span>💾 Autosaving...</span>}
-                  {saveStatus === "saved" && <span>✓ Saved</span>}
-                </div>
-              </div>
-
-              {/* Attach to Matter Selector */}
-              <div className="matter-attachment-bar">
-                <Briefcase size={16} />
-                <label>Attach to Client Matter:</label>
-                <select
-                  className="matter-select-input"
-                  value={selectedMatterId}
-                  onChange={(e) => setSelectedMatterId(e.target.value)}
-                >
-                  <option value="">-- Standalone Instrument (No Matter Attached) --</option>
-                  {matters.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.matter_name} ({m.forum_type})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Dynamic JSON-Schema Form */}
-              <div className="form-body-wrap">
-                <DynamicFormRenderer
-                  schema={templateDetail.schema_definition}
-                  values={formValues}
-                  onChange={handleFieldChange}
-                  errors={formErrors}
-                />
-              </div>
-
-              <div className="form-bottom-actions">
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => setStep("gallery")}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="btn btn-primary"
-                  onClick={handleProceedToPreview}
-                  disabled={previewLoading}
-                >
-                  {previewLoading ? "Validating..." : "Preview Document"} <Eye size={16} />
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ─── STEP 3: LIVE PREVIEW PANE ───────────────────────────────────── */}
-        {step === "preview" && (
-          <div className="drafting-preview-layout">
-            <div className="preview-top-banner">
-              <div>
-                <span className="step-tag">Step 3 of 4: Live Preview</span>
-                <h3>Document Draft Preview</h3>
-              </div>
-              <div className="preview-banner-actions">
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => setStep("form")}
-                >
-                  <ArrowLeft size={16} /> Edit Fields
-                </button>
-                <button
-                  className="btn btn-primary"
-                  onClick={handleGenerateAssembledDocument}
-                  disabled={generating}
-                >
-                  {generating ? "Assembling Legal Instrument..." : "Assemble & Seal"} <Sparkles size={16} />
-                </button>
-              </div>
+        {/* ═══════════════════════════════════════════════════════════════════
+            VIEW 2: DEDICATED FORM WORKSPACE WINDOW (Split View)
+        ═══════════════════════════════════════════════════════════════════ */}
+        {viewMode === "workspace" && selectedTemplate && (
+          <div className="form-workspace-window">
+            {/* ── Breadcrumb Bar ── */}
+            <div className="workspace-breadcrumb-bar">
+              <button
+                className="breadcrumb-back-link"
+                onClick={() => {
+                  setViewMode("gallery");
+                  setSelectedTemplate(null);
+                  setCurrentDraftId(null);
+                }}
+              >
+                <ArrowLeft size={14} style={{ marginRight: 6 }} />
+                Back to Forms Catalog
+              </button>
+              <span className="breadcrumb-divider">/</span>
+              <span className="breadcrumb-category">
+                {selectedTemplate.category === "AGREEMENT" ? "Agreements" : "Legal Forms"}
+              </span>
+              <span className="breadcrumb-divider">/</span>
+              <span className="breadcrumb-current-title">{selectedTemplate.name}</span>
             </div>
 
-            <div className="preview-doc-card">
-              <iframe
-                title="Draft Preview"
-                srcDoc={previewHtml}
-                className="preview-iframe"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* ─── STEP 4: ASSEMBLED INSTRUMENT & CRYPTOGRAPHIC SEAL ───────────── */}
-        {step === "result" && assembledResult && (
-          <div className="drafting-result-layout">
-            <div className="result-success-card">
-              <div className="success-icon-wrap">
-                <CheckCircle2 size={40} color="#16a34a" />
-              </div>
-              <h2>Legal Instrument Assembled & Verified</h2>
-              <p>
-                Assembled strictly pursuant to{" "}
-                <strong>{templateDetail?.statutory_anchor}</strong> with tamper-proof
-                cryptographic integrity seal.
-              </p>
-
-              {/* Cryptographic Seal Strip */}
-              <div className="crypto-seal-strip">
-                <div className="seal-row">
-                  <Shield size={16} />
-                  <span>SHA-256 Content Hash:</span>
-                  <code>{assembledResult.content_sha256}</code>
-                </div>
-                <div className="seal-row">
-                  <Clock size={16} />
-                  <span>Timestamp (UTC):</span>
-                  <code>{new Date().toISOString()}</code>
-                </div>
-                <div className="seal-row">
-                  <Layers size={16} />
-                  <span>Clause Verification Seam:</span>
-                  <span className="seam-badge" title="RAG Core is complete; integration active">
-                    Protocol v2.1 Stub Verified
+            {/* ── Workspace Header Dossier (Modeled after Case Workspace) ── */}
+            <header className="workspace-header-dossier">
+              <div className="dossier-left">
+                <div className="dossier-title-row">
+                  <h1 className="dossier-main-title">{selectedTemplate.name}</h1>
+                  <span className="dossier-status-badge">
+                    <Sparkles size={12} style={{ marginRight: 4 }} />
+                    AI Intake Active
                   </span>
                 </div>
+
+                <div className="dossier-meta-row">
+                  <div className="dossier-meta-item">
+                    <span className="meta-tag-label">Governing Provision:</span>
+                    <span className="meta-tag-value">🏛️ {selectedTemplate.statutory_anchor}</span>
+                  </div>
+
+                  {/* Multilingual Switcher Pills */}
+                  <div className="dossier-meta-item language-switch-item">
+                    <span className="meta-tag-label">Document Language:</span>
+                    <div className="lang-switcher-pills">
+                      <button
+                        className={`lang-pill-btn ${targetLanguage === "en" ? "active" : ""}`}
+                        onClick={() => handleLanguageChange("en")}
+                      >
+                        English
+                      </button>
+                      <button
+                        className={`lang-pill-btn ${targetLanguage === "hi" ? "active" : ""}`}
+                        onClick={() => handleLanguageChange("hi")}
+                      >
+                        हिंदी (Hindi)
+                      </button>
+                      <button
+                        className={`lang-pill-btn ${targetLanguage === "bilingual" ? "active" : ""}`}
+                        onClick={() => handleLanguageChange("bilingual")}
+                      >
+                        द्विभाषी (Bilingual)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Progress Meter */}
+                  <div className="dossier-meta-item progress-meter-item">
+                    <span className="meta-tag-label">Form Completion:</span>
+                    <div className="completion-bar-wrap">
+                      <div
+                        className="completion-bar-fill"
+                        style={{ width: `${completionPercent}%` }}
+                      />
+                    </div>
+                    <span className="completion-text">{completionPercent}%</span>
+                  </div>
+                </div>
               </div>
 
-              {/* Export Buttons */}
-              <div className="result-export-buttons">
+              {/* Action Buttons: Direct 1-Click Exports */}
+              <div className="dossier-right-actions">
                 <button
-                  className="btn btn-primary download-btn"
-                  onClick={() => handleDownloadExport("pdf")}
-                  disabled={exportingFormat === "pdf"}
-                >
-                  <Download size={18} />
-                  {exportingFormat === "pdf" ? "Exporting PDF..." : "Download Court-Ready PDF"}
-                </button>
-
-                <button
-                  className="btn btn-secondary download-btn"
+                  className="btn btn-secondary btn-export"
                   onClick={() => handleDownloadExport("docx")}
                   disabled={exportingFormat === "docx"}
+                  title="Download editable Microsoft Word document"
                 >
-                  <FileText size={18} />
-                  {exportingFormat === "docx" ? "Exporting DOCX..." : "Download Editable .DOCX"}
+                  <FileText size={16} />
+                  <span>{exportingFormat === "docx" ? "Exporting..." : "Download DOCX"}</span>
+                </button>
+
+                <button
+                  className="btn btn-primary btn-export"
+                  onClick={() => handleDownloadExport("pdf")}
+                  disabled={exportingFormat === "pdf"}
+                  title="Download court-admissible PDF with cryptographic SHA-256 seal"
+                >
+                  <Download size={16} />
+                  <span>{exportingFormat === "pdf" ? "Exporting..." : "Download PDF"}</span>
                 </button>
               </div>
+            </header>
 
-              <div className="result-next-steps">
-                <button
-                  className="btn btn-link"
-                  onClick={() => {
-                    setStep("gallery");
-                    setSelectedTemplate(null);
-                    setCurrentDraftId(null);
-                  }}
-                >
-                  Draft Another Document →
-                </button>
-                {selectedMatterId && (
+            {/* ── Two-Pane Split Workbench ── */}
+            <div className="workspace-split-workbench">
+              {/* ════════════ LEFT PANE: AI INTAKE & DIRECT EDIT ════════════ */}
+              <div className="split-pane split-pane-left">
+                {/* Sub-tab Navigation */}
+                <div className="pane-subtabs-bar">
                   <button
-                    className="btn btn-link"
-                    onClick={() => navigate(`/cases?matter=${selectedMatterId}`)}
+                    className={`pane-subtab-btn ${leftTab === "ai_intake" ? "active" : ""}`}
+                    onClick={() => setLeftTab("ai_intake")}
                   >
-                    View in Matter Workspace →
+                    <Bot size={15} />
+                    <span>AI Smart Intake & Upload</span>
                   </button>
+
+                  <button
+                    className={`pane-subtab-btn ${leftTab === "form_inputs" ? "active" : ""}`}
+                    onClick={() => setLeftTab("form_inputs")}
+                  >
+                    <Layers size={15} />
+                    <span>Structured Form Fields</span>
+                    <span className="subtab-count">
+                      {templateDetail?.schema_definition?.fields?.length || 8}
+                    </span>
+                  </button>
+
+                  <div className="autosave-indicator">
+                    {saveStatus === "saving" && <span>💾 Saving...</span>}
+                    {saveStatus === "saved" && <span>✓ Saved</span>}
+                  </div>
+                </div>
+
+                {/* Sub-tab 1: Conversational AI Intake + Drag & Drop Upload */}
+                {leftTab === "ai_intake" && (
+                  <div className="intake-tab-content">
+                    {/* Chat Messages Stream */}
+                    <div className="intake-chat-feed">
+                      {intakeMessages.map((msg) => (
+                        <div
+                          key={msg.id}
+                          className={`chat-bubble-wrap bubble-${msg.sender === "user" ? "user" : "ai"}`}
+                        >
+                          <div className="chat-avatar">
+                            {msg.sender === "user" ? <UserIcon size={14} /> : <Bot size={14} />}
+                          </div>
+
+                          <div className="chat-bubble">
+                            {msg.file && (
+                              <div className="chat-attached-file-badge">
+                                <Paperclip size={13} />
+                                <span>{msg.file.name}</span>
+                                <span className="file-size-tag">
+                                  ({Math.round(msg.file.size / 1024)} KB)
+                                </span>
+                              </div>
+                            )}
+
+                            <div className="markdown-prose">
+                              <ReactMarkdown>{msg.text}</ReactMarkdown>
+                            </div>
+
+                            {msg.extracted && msg.extracted.length > 0 && (
+                              <div className="extracted-fields-pill-row">
+                                <span className="extracted-label">Extracted:</span>
+                                {msg.extracted.map((fName) => (
+                                  <span key={fName} className="extracted-field-tag">
+                                    ✓ {fName}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            <span className="chat-timestamp">{msg.timestamp}</span>
+                          </div>
+                        </div>
+                      ))}
+
+                      {isExtracting && (
+                        <div className="chat-bubble-wrap bubble-ai">
+                          <div className="chat-avatar">
+                            <Bot size={14} />
+                          </div>
+                          <div className="chat-bubble extracting-indicator">
+                            <span className="loading-spinner-ring" />
+                            <span>Parsing document and verifying legal parameters...</span>
+                          </div>
+                        </div>
+                      )}
+                      <div ref={chatBottomRef} />
+                    </div>
+
+                    {/* Quick Suggestion Prompt Chips */}
+                    <div className="intake-suggestion-chips">
+                      {selectedTemplate.id.includes("RENT") && (
+                        <>
+                          <button
+                            type="button"
+                            className="suggestion-chip"
+                            onClick={() =>
+                              handleSendIntakeMessage(
+                                "Monthly rent ₹25,000, 11 months tenure, security deposit ₹50,000"
+                              )
+                            }
+                          >
+                            ₹25k Rent / 11m Tenure
+                          </button>
+                          <button
+                            type="button"
+                            className="suggestion-chip"
+                            onClick={() =>
+                              handleSendIntakeMessage(
+                                "Lock-in period 1 month, notice period 30 days"
+                              )
+                            }
+                          >
+                            1m Lock-in / 30d Notice
+                          </button>
+                        </>
+                      )}
+
+                      {selectedTemplate.id.includes("138") && (
+                        <>
+                          <button
+                            type="button"
+                            className="suggestion-chip"
+                            onClick={() =>
+                              handleSendIntakeMessage(
+                                "Cheque returned with memo 'Funds Insufficient' on 20-Oct-2026"
+                              )
+                            }
+                          >
+                            Dishonour: Funds Insufficient
+                          </button>
+                          <button
+                            type="button"
+                            className="suggestion-chip"
+                            onClick={() =>
+                              handleSendIntakeMessage("Statutory 15-day demand notice window")
+                            }
+                          >
+                            15-Day Demand Notice
+                          </button>
+                        </>
+                      )}
+
+                      {selectedTemplate.id.includes("NDA") && (
+                        <button
+                          type="button"
+                          className="suggestion-chip"
+                          onClick={() =>
+                            handleSendIntakeMessage(
+                              "Mutual confidentiality for a period of 2 years under Delhi jurisdiction"
+                            )
+                          }
+                        >
+                          Mutual NDA / 2 Years
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        className="suggestion-chip"
+                        onClick={() => handleLanguageChange(targetLanguage === "hi" ? "en" : "hi")}
+                      >
+                        {targetLanguage === "hi" ? "Switch to English" : "Switch to हिंदी"}
+                      </button>
+                    </div>
+
+                    {/* Drag & Drop File Upload Strip */}
+                    <div
+                      className={`intake-dropzone-strip ${isDragging ? "dragging" : ""}`}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleFileDrop}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <Upload size={16} className="dropzone-icon" />
+                      <span>
+                        Drag & drop <strong>Aadhaar, PAN, Cheque, Bill or Draft</strong> here, or{" "}
+                        <span className="browse-link">browse</span>
+                      </span>
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        style={{ display: "none" }}
+                        onChange={handleFileInputChange}
+                        accept=".txt,.pdf,.png,.jpg,.jpeg,.json,.csv"
+                      />
+                    </div>
+
+                    {/* Chat Input Bar with 📎 Attachment */}
+                    <form
+                      className="intake-input-bar"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        handleSendIntakeMessage();
+                      }}
+                    >
+                      <button
+                        type="button"
+                        className="input-attach-btn"
+                        title="Attach Document (Aadhaar, Cheque photo, Return memo, Bill)"
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <Paperclip size={18} />
+                      </button>
+
+                      <input
+                        type="text"
+                        placeholder="Type legal details or answer questions (e.g., Landlord is Ramesh Sharma, monthly rent ₹35,000)..."
+                        value={intakeInput}
+                        onChange={(e) => setIntakeInput(e.target.value)}
+                        className="intake-text-input"
+                        disabled={isExtracting}
+                      />
+
+                      <button
+                        type="submit"
+                        className="input-send-btn"
+                        disabled={isExtracting || (!intakeInput.trim() && !attachedFile)}
+                      >
+                        <Send size={16} />
+                      </button>
+                    </form>
+                  </div>
                 )}
+
+                {/* Sub-tab 2: Direct Structured Form Field Inputs */}
+                {leftTab === "form_inputs" && templateDetail && (
+                  <div className="inputs-tab-content">
+                    {/* Matter Link Selector */}
+                    <div className="matter-attachment-bar">
+                      <Briefcase size={15} />
+                      <label>Attach to Client Matter:</label>
+                      <select
+                        className="matter-select-input"
+                        value={selectedMatterId}
+                        onChange={(e) => setSelectedMatterId(e.target.value)}
+                      >
+                        <option value="">-- Standalone Instrument (No Matter Attached) --</option>
+                        {matters.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.matter_name} ({m.forum_type})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="dynamic-form-wrap">
+                      <DynamicFormRenderer
+                        schema={templateDetail.schema_definition}
+                        values={formValues}
+                        onChange={handleFieldChange}
+                        errors={formErrors}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ════════════ RIGHT PANE: REAL-TIME COURT-READY PREVIEW ════════════ */}
+              <div className="split-pane split-pane-right">
+                <div className="preview-pane-header">
+                  <div className="preview-title-wrap">
+                    <Eye size={16} className="preview-icon" />
+                    <h3>Live Legal Document Preview</h3>
+                    <span className="preview-lang-badge">
+                      {targetLanguage === "hi"
+                        ? "हिंदी (Devnagari)"
+                        : targetLanguage === "bilingual"
+                        ? "Bilingual (द्विभाषी)"
+                        : "English"}
+                    </span>
+                  </div>
+
+                  <div className="preview-actions-strip">
+                    <button
+                      className="btn btn-secondary btn-xs"
+                      onClick={async () => {
+                        if (!currentDraftId) return;
+                        setPreviewLoading(true);
+                        try {
+                          const updated = await getDraftPreview(currentDraftId);
+                          setPreviewHtml(updated);
+                        } finally {
+                          setPreviewLoading(false);
+                        }
+                      }}
+                      title="Refresh Preview"
+                    >
+                      <RefreshCw size={13} className={previewLoading ? "spin" : ""} />
+                      <span>Refresh</span>
+                    </button>
+
+                    <button
+                      className="btn btn-secondary btn-xs"
+                      onClick={() => handleDownloadExport("docx")}
+                      disabled={exportingFormat === "docx"}
+                    >
+                      <FileText size={13} />
+                      <span>DOCX</span>
+                    </button>
+
+                    <button
+                      className="btn btn-primary btn-xs"
+                      onClick={() => handleDownloadExport("pdf")}
+                      disabled={exportingFormat === "pdf"}
+                    >
+                      <Download size={13} />
+                      <span>PDF</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Preview Document Viewport */}
+                <div className="preview-viewport-card">
+                  {previewLoading ? (
+                    <div className="preview-loading-overlay">
+                      <span className="loading-spinner-ring" />
+                      <p>Rendering court-admissible layout...</p>
+                    </div>
+                  ) : previewHtml ? (
+                    <iframe
+                      title="Live Document Preview"
+                      srcDoc={previewHtml}
+                      className="preview-iframe-element"
+                    />
+                  ) : (
+                    <div className="preview-placeholder">
+                      <FileText size={48} color="#94a3b8" />
+                      <p>Answer questions or upload a document to generate live preview.</p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

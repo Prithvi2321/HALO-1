@@ -1132,3 +1132,234 @@
   display: flex;
   align-items: center;
 }
+
+/* ── AI Legal Drafting & Smart Forms Studio Panel ───────────────────────── */
+
+.dashboard-forms-panel {
+  background: var(--halo-surface, #ffffff);
+  border: 1px solid var(--halo-border, #e2e8f0);
+  border-radius: var(--halo-radius-card, 12px);
+  padding: 1.5rem;
+  box-shadow: var(--halo-shadow-card, 0 1px 3px rgba(0, 0, 0, 0.05));
+  margin-bottom: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.forms-studio-banner-desc {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.highlight-pill {
+  background: #fef3c7 !important;
+  color: #92400e !important;
+  border-color: #fde68a !important;
+  font-weight: 600;
+}
+
+.forms-studio-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.forms-search-box {
+  position: relative;
+  flex: 1;
+  min-width: 280px;
+  max-width: 480px;
+  display: flex;
+  align-items: center;
+}
+
+.forms-search-icon {
+  position: absolute;
+  left: 0.85rem;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.forms-search-input {
+  width: 100%;
+  padding: 0.55rem 2.25rem 0.55rem 2.25rem;
+  font-size: 0.875rem;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #0f172a;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.forms-search-input:focus {
+  border-color: #0284c7;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.1);
+}
+
+.forms-search-clear {
+  position: absolute;
+  right: 0.75rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+}
+
+.forms-search-clear:hover {
+  color: #475569;
+}
+
+.forms-category-pills {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.forms-cat-pill {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border-radius: 6px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.forms-cat-pill:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.forms-cat-pill.active {
+  background: #0f172a;
+  color: #ffffff;
+  border-color: #0f172a;
+}
+
+.forms-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.smart-form-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 1.25rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  transition: all 0.18s ease;
+  position: relative;
+}
+
+.smart-form-card:hover {
+  border-color: #0284c7;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
+  transform: translateY(-2px);
+}
+
+.smart-form-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.smart-form-icon-wrap {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.smart-form-badges {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.smart-form-lang-badge {
+  font-size: 0.6875rem;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 600;
+  border: 1px solid #dbeafe;
+}
+
+.smart-form-format-badge {
+  font-size: 0.6875rem;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 600;
+  border: 1px solid #e2e8f0;
+}
+
+.smart-form-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.35;
+}
+
+.smart-form-anchor {
+  font-size: 0.775rem;
+  color: #64748b;
+  font-weight: 500;
+  background: #f8fafc;
+  padding: 3px 8px;
+  border-radius: 4px;
+  display: inline-block;
+  align-self: flex-start;
+}
+
+.smart-form-desc {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #475569;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex: 1;
+}
+
+.smart-form-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 0.75rem;
+  border-top: 1px solid #f1f5f9;
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.smart-form-fields-badge {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.smart-form-open-btn {
+  color: #0284c7;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+}

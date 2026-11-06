@@ -51,6 +51,7 @@ import {
   unpairTelegram,
 } from "../api/telegramApi";
 import { getIndianLegalNews } from "../api/newsApi";
+import { listTemplates } from "../api/draftingApi";
 import AppShell from "../components/AppShell";
 import "./DashboardPage.css";
 
@@ -79,10 +80,15 @@ export default function DashboardPage() {
   // Legal News State
   const [legalNews, setLegalNews] = useState([]);
 
+  // Smart Forms Studio State
+  const [templates, setTemplates] = useState([]);
+  const [formSearchQuery, setFormSearchQuery] = useState("");
+  const [selectedFormCategory, setSelectedFormCategory] = useState("ALL");
+
   useEffect(() => {
     async function loadData() {
       try {
-        const [userData, historyData, summaryData, rulesData, tgStatus, newsData, mattersData] = await Promise.all([
+        const [userData, historyData, summaryData, rulesData, tgStatus, newsData, mattersData, tmplsData] = await Promise.all([
           getCurrentUser().catch(() => null),
           getResearchHistory().catch(() => []),
           getDashboardSummary().catch(() => null),
@@ -90,6 +96,7 @@ export default function DashboardPage() {
           getPairingStatus().catch(() => ({ is_paired: false })),
           getIndianLegalNews("", 4).catch(() => ({ articles: [] })),
           listMatters().catch(() => []),
+          listTemplates().catch(() => []),
         ]);
         setUser(userData);
         setHistory(historyData || []);
@@ -98,6 +105,7 @@ export default function DashboardPage() {
         setTelegramStatus(tgStatus || { is_paired: false });
         setLegalNews(newsData?.articles || []);
         setMatters(mattersData || []);
+        setTemplates(tmplsData || []);
 
         if (rulesData && rulesData.length > 0) {
           setSelectedRuleId(rulesData[0].rule_id);
@@ -378,6 +386,161 @@ export default function DashboardPage() {
                   <span className="case-act-tag">{c.statutory_act || "Corporate Law"}</span>
                   <span className="case-open-hint">
                     Open Workspace <ArrowRight size={14} style={{ marginLeft: 3 }} />
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ── AI LEGAL DRAFTING & SMART FORMS STUDIO PANEL ── */}
+        <section className="dashboard-forms-panel">
+          <div className="panel-header">
+            <div className="panel-header-title">
+              <Sparkles size={18} className="panel-icon text-amber" />
+              <h2>AI Legal Drafting & Smart Forms Studio</h2>
+              <span className="panel-badge-pill highlight-pill">
+                Auto-Intake via Questions & Document Upload
+              </span>
+            </div>
+            <Link to="/drafts" className="panel-link">
+              Explore All {templates.length || 10} Legal Forms &rarr;
+            </Link>
+          </div>
+
+          <p className="forms-studio-banner-desc">
+            Skip tedious manual typing. Conversational Q&A and instant file upload (Aadhaar, PAN, electricity bills, cheque leaf, return memo) to auto-extract parameters and produce court-ready legal instruments with live multilingual preview (English, हिंदी & Bilingual) and 1-click DOCX & PDF exports.
+          </p>
+
+          {/* Forms Search & Category Bar */}
+          <div className="forms-studio-controls">
+            <div className="forms-search-box">
+              <Search size={16} className="forms-search-icon" />
+              <input
+                type="text"
+                placeholder="Search forms (e.g. Rent Agreement, Cheque Bounce, NDA, Board Resolution)..."
+                value={formSearchQuery}
+                onChange={(e) => setFormSearchQuery(e.target.value)}
+                className="forms-search-input"
+              />
+              {formSearchQuery && (
+                <button
+                  type="button"
+                  className="forms-search-clear"
+                  onClick={() => setFormSearchQuery("")}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            <div className="forms-category-pills">
+              {[
+                { id: "ALL", label: "All Forms" },
+                { id: "AGREEMENT", label: "Agreements & Leases" },
+                { id: "NOTICE", label: "Statutory Notices" },
+                { id: "CORPORATE_RESOLUTION", label: "Board Resolutions" },
+              ].map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  className={`forms-cat-pill ${selectedFormCategory === cat.id ? "active" : ""}`}
+                  onClick={() => setSelectedFormCategory(cat.id)}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Featured / Filtered Smart Forms Grid */}
+          <div className="forms-cards-grid">
+            {((templates.length > 0 ? templates : [
+              {
+                id: "RENT_AGREEMENT_RESIDENTIAL_V1",
+                name: "Residential & Commercial Rent / Lease Agreement",
+                category: "AGREEMENT",
+                statutory_anchor: "Transfer of Property Act, 1882 / Rent Control Act",
+                description: "Auto-extracts landlord/tenant details, Aadhaar/PAN, lock-in period, rent, security deposit, and CAM charges via questions or document upload.",
+                field_count: 8,
+              },
+              {
+                id: "NOTICE_DEMAND_138_V1",
+                name: "Section 138 NI Act Cheque Bounce Statutory Demand Notice",
+                category: "NOTICE",
+                statutory_anchor: "Section 138 proviso (b), Negotiable Instruments Act, 1881",
+                description: "Auto-drafts mandatory 15-day statutory demand notice from dishonoured cheque scan and bank return memo with 100% statutory timeline calculation.",
+                field_count: 7,
+              },
+              {
+                id: "NDA_COMMERCIAL_V1",
+                name: "Commercial Non-Disclosure Agreement (NDA)",
+                category: "AGREEMENT",
+                statutory_anchor: "Indian Contract Act, 1872",
+                description: "Standard bilateral/unilateral confidentiality covenants with trade secret protection, non-compete, and injunctive relief clauses.",
+                field_count: 6,
+              },
+              {
+                id: "CONSULTANT_AGREEMENT_V1",
+                name: "Independent Consultant & Service Agreement",
+                category: "AGREEMENT",
+                statutory_anchor: "Indian Contract Act, 1872",
+                description: "Comprehensive contractor engagement agreement with milestone-based fee schedules, intellectual property assignment, and non-solicitation.",
+                field_count: 7,
+              },
+              {
+                id: "BOARD_RES_DIR_APPT_V1",
+                name: "Board Resolution — Appointment of Additional Director",
+                category: "CORPORATE_RESOLUTION",
+                statutory_anchor: "Section 161(1), Companies Act, 2013",
+                description: "Standard board resolution appointing an additional director until the ensuing Annual General Meeting with DIR-12 compliance note.",
+                field_count: 7,
+              },
+              {
+                id: "DEMAND_NOTICE_SEC8_IBC_V1",
+                name: "Section 8 IBC Demand Notice (Form 3/4)",
+                category: "NOTICE",
+                statutory_anchor: "Section 8, Insolvency and Bankruptcy Code, 2016",
+                description: "Pre-requisite 10-day operational creditor demand notice demanding payment of unpaid operational debt under Rule 5 of AAA Rules.",
+                field_count: 7,
+              },
+            ]).filter((t) => {
+              const matchCat =
+                selectedFormCategory === "ALL" ||
+                t.category === selectedFormCategory ||
+                (selectedFormCategory === "AGREEMENT" && (t.category === "AGREEMENT" || t.id.includes("RENT") || t.id.includes("NDA") || t.id.includes("CONSULTANT")));
+              const matchSearch =
+                !formSearchQuery ||
+                t.name.toLowerCase().includes(formSearchQuery.toLowerCase()) ||
+                t.statutory_anchor?.toLowerCase().includes(formSearchQuery.toLowerCase()) ||
+                t.description?.toLowerCase().includes(formSearchQuery.toLowerCase());
+              return matchCat && matchSearch;
+            })).map((t) => (
+              <div
+                key={t.id}
+                className="smart-form-card"
+                onClick={() => navigate(`/drafts?template=${t.id}`)}
+              >
+                <div className="smart-form-card-top">
+                  <div className="smart-form-icon-wrap">
+                    {t.id.includes("RENT") ? "🏠" : t.id.includes("138") ? "⚖️" : t.id.includes("NDA") ? "🤝" : t.id.includes("CONSULTANT") ? "💼" : t.id.includes("BOARD") ? "🏢" : "📜"}
+                  </div>
+                  <div className="smart-form-badges">
+                    <span className="smart-form-lang-badge">🌐 EN • HI • द्विभाषी</span>
+                    <span className="smart-form-format-badge">DOCX • PDF</span>
+                  </div>
+                </div>
+
+                <h3 className="smart-form-title">{t.name}</h3>
+                <div className="smart-form-anchor">🏛️ {t.statutory_anchor}</div>
+                <p className="smart-form-desc">{t.description}</p>
+
+                <div className="smart-form-card-footer">
+                  <span className="smart-form-fields-badge">
+                    {t.field_count || 8} Auto-Parsed Fields
+                  </span>
+                  <span className="smart-form-open-btn">
+                    Launch Smart Studio <ArrowRight size={14} style={{ marginLeft: 4 }} />
                   </span>
                 </div>
               </div>

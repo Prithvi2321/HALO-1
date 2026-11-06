@@ -20,7 +20,7 @@ class TemplateManifest(BaseModel):
     title: str
     version: str = "1.0.0"
     statutory_anchor: str
-    category: str  # CORPORATE_RESOLUTION | PETITION | AFFIDAVIT | NOTICE | COMPLIANCE
+    category: str  # CORPORATE_RESOLUTION | PETITION | AFFIDAVIT | NOTICE | COMPLIANCE | AGREEMENT
     description: str
     controlling_precedent: Optional[str] = None
     output_formats: List[str] = ["docx", "pdf"]
@@ -394,6 +394,292 @@ Certified by:
 ________________________________________
 {{ professional_name }}
 Date: {{ current_date_formatted }}
+"""
+    ),
+
+    # ─── 8. Residential & Commercial Rent Agreement (Multilingual) ────────────
+    "RENT_AGREEMENT_RESIDENTIAL_V1": TemplateManifest(
+        template_id="RENT_AGREEMENT_RESIDENTIAL_V1",
+        title="Residential & Commercial Rent / Lease Agreement",
+        version="1.0.0",
+        statutory_anchor="Transfer of Property Act, 1882 & State Rent Control Acts",
+        category="AGREEMENT",
+        description="Standard 11-month or fixed-term tenancy & lease agreement with automated clauses for rent, security deposit, lock-in period, maintenance, and bilingual English/Hindi execution.",
+        controlling_precedent="Anthony v. K.C. Ittoop & Sons (2000) 6 SCC 394 (Registration mandates for lease periods exceeding 11 months)",
+        schema_definition={
+            "template_id": "RENT_AGREEMENT_RESIDENTIAL_V1",
+            "statutory_anchor": "Transfer of Property Act, 1882",
+            "fields": [
+                {"id": "landlord_name", "label": "Landlord / Lessor Full Name", "type": "string", "required": True, "placeholder": "Ramesh Chandra Sharma"},
+                {"id": "landlord_pan", "label": "Landlord PAN", "type": "string", "required": False, "validator": "pan", "placeholder": "ABCDE1234F"},
+                {"id": "landlord_address", "label": "Landlord Permanent Address", "type": "text", "required": True, "placeholder": "B-12, Sector 14, Noida, UP - 201301"},
+                {"id": "tenant_name", "label": "Tenant / Lessee Full Name", "type": "string", "required": True, "placeholder": "Priya Rajesh Verma"},
+                {"id": "tenant_pan", "label": "Tenant PAN / Aadhaar", "type": "string", "required": False, "placeholder": "XYZPK5678Q"},
+                {"id": "tenant_address", "label": "Tenant Permanent Address", "type": "text", "required": True, "placeholder": "Flat 304, Green Valley Apts, Indirapuram, Ghaziabad"},
+                {"id": "premises_address", "label": "Leased / Rented Premises Address", "type": "text", "required": True, "placeholder": "Flat No. 402, 4th Floor, Lotus Towers, Andheri West, Mumbai - 400053"},
+                {"id": "monthly_rent", "label": "Monthly Rent Amount (₹)", "type": "currency", "required": True, "placeholder": "35000"},
+                {"id": "security_deposit", "label": "Interest-Free Refundable Security Deposit (₹)", "type": "currency", "required": True, "placeholder": "100000"},
+                {"id": "commencement_date", "label": "Lease Commencement Date", "type": "date", "required": True},
+                {"id": "tenure_months", "label": "Tenure Period (Months)", "type": "number", "required": True, "default": 11},
+                {"id": "lock_in_months", "label": "Lock-In Period (Months)", "type": "number", "required": True, "default": 6},
+                {"id": "notice_period_days", "label": "Termination Notice Period (Days)", "type": "number", "required": True, "default": 30},
+                {"id": "maintenance_charges", "label": "Society / Maintenance Charges (₹/month)", "type": "currency", "required": False, "default": 0},
+                {"id": "target_language", "label": "Output Language", "type": "select", "required": True, "default": "en", "options": [
+                    {"label": "English (Standard Legal)", "value": "en"},
+                    {"label": "हिंदी (Hindi Devnagari)", "value": "hi"},
+                    {"label": "Bilingual (English + हिंदी)", "value": "bilingual"}
+                ]}
+            ]
+        },
+        body_template="""{% if target_language == 'hi' %}
+किरायानामा / लीज अनुबंध (RENT AGREEMENT)
+(हस्तांतरण संपत्ति अधिनियम, 1882 एवं संबंधित किराया नियंत्रण अधिनियम के तहत)
+========================================================================================================================
+
+यह किरायानामा आज दिनांक {{ commencement_date_formatted }} को निष्पादित किया गया:
+
+प्रथम पक्ष (मकान मालिक / LESSOR):
+श्री/श्रीमती {{ landlord_name }}
+पैन: {{ landlord_pan | default('उपलब्ध नहीं') }}
+स्थाई पता: {{ landlord_address }}
+(जिन्हें आगे "मकान मालिक / प्रथम पक्ष" कहा जाएगा)
+
+एवं
+
+द्वितीय पक्ष (किरायेदार / LESSEE):
+श्री/श्रीमती {{ tenant_name }}
+पहचान/पैन: {{ tenant_pan | default('उपलब्ध नहीं') }}
+स्थाई पता: {{ tenant_address }}
+(जिन्हें आगे "किरायेदार / द्वितीय पक्ष" कहा जाएगा)
+
+किराये पर दी गई संपत्ति का विवरण:
+{{ premises_address }}
+
+नियम एवं शर्तें (TERMS AND CONDITIONS):
+1. अवधि (TENURE): यह अनुबंध {{ commencement_date_formatted }} से कुल {{ tenure_months }} माह की अवधि के लिए वैध रहेगा।
+2. मासिक किराया (MONTHLY RENT): द्वितीय पक्ष प्रथम पक्ष को प्रत्येक अंग्रेजी माह की 7 तारीख तक ₹{{ monthly_rent }} प्रति माह की दर से किराया अदा करेगा।
+3. सुरक्षा राशि (SECURITY DEPOSIT): द्वितीय पक्ष ने प्रथम पक्ष को ₹{{ security_deposit }} की ब्याज-मुक्त प्रतिभूति जमा राशि सौंपी है, जो परिसर खाली करते समय पूर्णतः वापसी योग्य होगी।
+4. लॉक-इन अवधि (LOCK-IN PERIOD): दोनों पक्ष कम से कम {{ lock_in_months }} माह तक यह अनुबंध समाप्त नहीं करेंगे।
+5. नोटिस अवधि (NOTICE PERIOD): लॉक-इन के पश्चात कोई भी पक्ष {{ notice_period_days }} दिनों का लिखित नोटिस देकर अनुबंध समाप्त कर सकता है।
+
+साक्षीगण के समक्ष हस्ताक्षर:
+
+प्रथम पक्ष (मकान मालिक): _______________________
+{{ landlord_name }}
+
+द्वितीय पक्ष (किरायेदार): _______________________
+{{ tenant_name }}
+{% elif target_language == 'bilingual' %}
+RESIDENTIAL / COMMERCIAL LEASE & RENT AGREEMENT
+किराया एवं लीज अनुबंध (BILINGUAL / द्विभाषी)
+========================================================================================================================
+
+THIS LEASE AND LICENSE AGREEMENT is executed on this {{ commencement_date_formatted }} at Mumbai / New Delhi:
+
+BETWEEN / प्रथम पक्ष (LESSOR / LANDLORD):
+{{ landlord_name }}, PAN: {{ landlord_pan | default('N/A') }}, Residing at: {{ landlord_address }}.
+श्री/श्रीमती {{ landlord_name }}, पता: {{ landlord_address }}
+
+AND / द्वितीय पक्ष (LESSEE / TENANT):
+{{ tenant_name }}, ID/PAN: {{ tenant_pan | default('N/A') }}, Residing at: {{ tenant_address }}.
+श्री/श्रीमती {{ tenant_name }}, पता: {{ tenant_address }}
+
+SUBJECT PREMISES / किराये का परिसर:
+All that premises situated at: {{ premises_address }}.
+उक्त संपत्ति स्थित: {{ premises_address }}
+
+OPERATIVE COVENANTS / प्रमुख शर्तें:
+1. TENURE / अनुबंध अवधि: The tenure shall be for a fixed term of {{ tenure_months }} Months commencing from {{ commencement_date_formatted }}. (यह अनुबंध कुल {{ tenure_months }} माह की अवधि हेतु निष्पादित किया गया है।)
+2. MONTHLY RENT / मासिक किराया: The Lessee shall pay to the Lessor a monthly rent of ₹ {{ monthly_rent }}/- per English calendar month. (मासिक किराया राशि ₹ {{ monthly_rent }}/- देय होगी।)
+3. SECURITY DEPOSIT / धरोहर राशि: The Lessee has deposited an interest-free refundable security sum of ₹ {{ security_deposit }}/-. (ब्याज-मुक्त सुरक्षा जमा राशि ₹ {{ security_deposit }}/- जमा की गई है।)
+4. LOCK-IN PERIOD / लॉक-इन अवधि: A mandatory lock-in period of {{ lock_in_months }} months shall bind both parties. (दोनों पक्षों हेतु {{ lock_in_months }} माह की लॉक-इन बाध्यकारी होगी।)
+5. TERMINATION NOTICE / समाप्ति सूचना: Either party may terminate by giving {{ notice_period_days }} days written notice. ({{ notice_period_days }} दिवस का लिखित नोटिस अनिवार्य होगा।)
+
+IN WITNESS WHEREOF the parties have set their hands / दोनों पक्षों के हस्ताक्षर:
+
+LESSOR / मकान मालिक: __________________________
+{{ landlord_name }}
+
+LESSEE / किरायेदार: ___________________________
+{{ tenant_name }}
+{% else %}
+RESIDENTIAL / COMMERCIAL LEASE AND RENT AGREEMENT
+PURSUANT TO THE TRANSFER OF PROPERTY ACT, 1882
+========================================================================================================================
+
+THIS LEASE AGREEMENT is made and entered into on this {{ commencement_date_formatted }} by and between:
+
+LESSOR / LANDLORD:
+{{ landlord_name }}
+PAN: {{ landlord_pan | default('Not Provided') }}
+Permanent Address: {{ landlord_address }}
+(hereinafter referred to as the "LESSOR", which expression shall include legal heirs, successors, and assigns) of the FIRST PART;
+
+AND
+
+LESSEE / TENANT:
+{{ tenant_name }}
+PAN / ID: {{ tenant_pan | default('Not Provided') }}
+Permanent Address: {{ tenant_address }}
+(hereinafter referred to as the "LESSEE", which expression shall include legal heirs, successors, and assigns) of the SECOND PART.
+
+WHEREAS the Lessor is the absolute lawful owner of the residential/commercial premises situated at:
+{{ premises_address }} (hereinafter referred to as the "SCHEDULED PREMISES").
+
+NOW THIS AGREEMENT WITNESSETH AS FOLLOWS:
+1. TERM & COMMENCEMENT:
+   The tenancy shall be for a fixed period of {{ tenure_months }} MONTHS commencing from {{ commencement_date_formatted }}.
+
+2. MONTHLY RENT & CHARGES:
+   The Lessee agrees to pay the Lessor a monthly rent of ₹ {{ monthly_rent }}/- (Rupees {{ monthly_rent }} Only) payable on or before the 7th day of each calendar month.
+   {% if maintenance_charges and maintenance_charges != 0 and maintenance_charges != '0' and 'Pending' not in maintenance_charges|string %}Society / Maintenance charges of ₹ {{ maintenance_charges }}/- per month shall be paid additionally.{% endif %}
+
+3. REFUNDABLE SECURITY DEPOSIT:
+   The Lessee has paid a sum of ₹ {{ security_deposit }}/- as interest-free refundable security deposit. The said deposit shall be refunded upon vacating the premises, subject to deductions for unpaid utilities or physical damages.
+
+4. LOCK-IN PERIOD & TERMINATION:
+   Both parties agree to a mandatory lock-in period of {{ lock_in_months }} MONTHS. Following expiry of the lock-in, either party may terminate this agreement by serving {{ notice_period_days }} DAYS written notice.
+
+5. STATUTORY GOVERNANCE & REGISTRATION:
+   In terms of the binding dictum in Anthony v. K.C. Ittoop & Sons (2000) 6 SCC 394, this instrument records the commercial covenants between the parties.
+
+IN WITNESS WHEREOF, the parties hereto have signed and executed this Agreement:
+
+LESSOR: ________________________________________
+{{ landlord_name }}
+
+LESSEE: ________________________________________
+{{ tenant_name }}
+{% endif %}
+"""
+    ),
+
+    # ─── 9. Commercial Non-Disclosure Agreement (NDA) ────────────────────────
+    "NDA_COMMERCIAL_V1": TemplateManifest(
+        template_id="NDA_COMMERCIAL_V1",
+        title="Commercial Non-Disclosure Agreement (NDA)",
+        version="1.0.0",
+        statutory_anchor="Section 27, Indian Contract Act, 1872",
+        category="AGREEMENT",
+        description="Bilateral/Unilateral Non-Disclosure Agreement safeguarding proprietary IP, technical algorithms, source code, financial models, and trade secrets with non-solicitation clauses.",
+        controlling_precedent="Niranjan Shankar Golikari v. Century Spg. & Mfg. Co. Ltd. (1967) 2 SCR 378",
+        schema_definition={
+            "template_id": "NDA_COMMERCIAL_V1",
+            "statutory_anchor": "Indian Contract Act, 1872",
+            "fields": [
+                {"id": "disclosing_party", "label": "Disclosing Party / Company", "type": "string", "required": True, "placeholder": "Acme Technologies Private Limited"},
+                {"id": "disclosing_address", "label": "Disclosing Party Address", "type": "text", "required": True, "placeholder": "Cyber City, DLF Phase II, Gurugram, Haryana - 122002"},
+                {"id": "receiving_party", "label": "Receiving Party / Counterparty", "type": "string", "required": True, "placeholder": "Apex Logistics Solutions LLP"},
+                {"id": "receiving_address", "label": "Receiving Party Address", "type": "text", "required": True, "placeholder": "Nariman Point, Mumbai - 400021"},
+                {"id": "purpose", "label": "Purpose of Disclosure", "type": "text", "required": True, "placeholder": "Evaluating a strategic joint-venture partnership and API data integration for legal technologies."},
+                {"id": "duration_years", "label": "Confidentiality Duration (Years)", "type": "number", "required": True, "default": 2},
+                {"id": "governing_city", "label": "Governing Court Jurisdiction", "type": "string", "required": True, "default": "New Delhi", "placeholder": "New Delhi / Mumbai / Bengaluru"},
+                {"id": "effective_date", "label": "Effective Date", "type": "date", "required": True}
+            ]
+        },
+        body_template="""MUTUAL NON-DISCLOSURE AND CONFIDENTIALITY AGREEMENT
+PURSUANT TO THE INDIAN CONTRACT ACT, 1872
+========================================================================================================================
+
+THIS AGREEMENT is entered into on {{ effective_date_formatted }} BY AND BETWEEN:
+
+1. {{ disclosing_party }}, having its registered office at:
+   {{ disclosing_address }}
+   (hereinafter referred to as the "DISCLOSING PARTY")
+
+AND
+
+2. {{ receiving_party }}, having its principal office at:
+   {{ receiving_address }}
+   (hereinafter referred to as the "RECEIVING PARTY")
+
+WHEREAS the parties wish to explore a business opportunity concerning:
+"{{ purpose }}" (the "PURPOSE").
+
+NOW, THEREFORE, the parties agree as follows:
+1. CONFIDENTIAL INFORMATION:
+   "Confidential Information" includes all technical data, trade secrets, proprietary algorithms, financial models, client dossiers, and software source code disclosed by either party.
+
+2. NON-DISCLOSURE OBLIGATION:
+   The Receiving Party agrees to hold all Confidential Information in strict trust and confidence and shall not disclose it to third parties without prior written consent.
+
+3. TERM OF PROTECTION:
+   The obligations of confidentiality shall survive for a period of {{ duration_years }} ({{ duration_years | words | default(duration_years) }}) YEARS from the Effective Date.
+
+4. GOVERNING LAW & JURISDICTION:
+   This Agreement shall be governed by the laws of India. The courts at {{ governing_city }} shall have exclusive jurisdiction over any disputes.
+
+IN WITNESS WHEREOF, the authorized representatives have executed this Agreement:
+
+For {{ disclosing_party | upper }}:
+________________________________________
+Authorized Signatory
+
+For {{ receiving_party | upper }}:
+________________________________________
+Authorized Signatory
+"""
+    ),
+
+    # ─── 10. Independent Consultant Agreement ─────────────────────────────────
+    "CONSULTANT_AGREEMENT_V1": TemplateManifest(
+        template_id="CONSULTANT_AGREEMENT_V1",
+        title="Independent Consultant & Professional Services Agreement",
+        version="1.0.0",
+        statutory_anchor="Indian Contract Act, 1872 & Copyright Act, 1957",
+        category="AGREEMENT",
+        description="Comprehensive contractor agreement for freelance consultants, legal advisors, and software specialists with full intellectual property assignment.",
+        schema_definition={
+            "template_id": "CONSULTANT_AGREEMENT_V1",
+            "statutory_anchor": "Indian Contract Act, 1872",
+            "fields": [
+                {"id": "client_name", "label": "Client / Hiring Organization", "type": "string", "required": True, "placeholder": "Nexus Enterprises Private Limited"},
+                {"id": "consultant_name", "label": "Consultant / Specialist Name", "type": "string", "required": True, "placeholder": "Vikramaditya Sen"},
+                {"id": "consultant_pan", "label": "Consultant PAN / GSTIN", "type": "string", "required": False, "placeholder": "ABCPS9912K"},
+                {"id": "scope_of_work", "label": "Detailed Scope of Work", "type": "text", "required": True, "placeholder": "Architecture design, code review, and regulatory audit for fintech deployment."},
+                {"id": "fee_amount", "label": "Professional Fee (₹)", "type": "currency", "required": True, "placeholder": "150000"},
+                {"id": "payment_milestones", "label": "Payment Terms & Milestones", "type": "string", "required": True, "default": "50% advance upon signing, 50% upon milestone deliverables acceptance"},
+                {"id": "effective_date", "label": "Commencement Date", "type": "date", "required": True},
+                {"id": "notice_period_days", "label": "Termination Notice Period (Days)", "type": "number", "required": True, "default": 15}
+            ]
+        },
+        body_template="""INDEPENDENT CONSULTANT & PROFESSIONAL SERVICES AGREEMENT
+PURSUANT TO THE INDIAN CONTRACT ACT, 1872 & SECTION 17 OF THE COPYRIGHT ACT, 1957
+========================================================================================================================
+
+THIS AGREEMENT is entered into on {{ effective_date_formatted }} between:
+
+CLIENT:
+{{ client_name }} (hereinafter referred to as the "COMPANY")
+
+AND
+
+CONSULTANT:
+{{ consultant_name }} (PAN: {{ consultant_pan | default('N/A') }}) (hereinafter referred to as the "CONSULTANT").
+
+1. SCOPE OF SERVICES:
+   The Consultant shall provide the following professional services:
+   "{{ scope_of_work }}"
+
+2. COMPENSATION & FEES:
+   The Company agrees to pay the Consultant a professional fee of ₹ {{ fee_amount }}/- subject to statutory TDS deductions under Section 194J of the Income Tax Act, 1961.
+   Payment schedule: {{ payment_milestones }}.
+
+3. INTELLECTUAL PROPERTY ASSIGNMENT:
+   Pursuant to Section 17 of the Copyright Act, 1957, all inventions, reports, algorithms, and documentation developed during the engagement shall vest solely with the Company as "work made for hire".
+
+4. TERMINATION:
+   Either party may terminate this agreement without cause by providing {{ notice_period_days }} days written notice.
+
+EXECUTED BY:
+
+For {{ client_name | upper }}:
+________________________________________
+Authorized Signatory
+
+CONSULTANT:
+________________________________________
+{{ consultant_name }}
 """
     )
 }
