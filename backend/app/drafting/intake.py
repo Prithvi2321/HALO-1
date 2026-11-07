@@ -72,14 +72,35 @@ def resolve_template_id(query: str) -> Optional[str]:
     return None
 
 
-def parse_lakh(s: str) -> Optional[int]:
-    """Parses expressions like '1.5 lakh', '50 lacs', etc."""
-    m = re.search(r'([\d\.]+)\s*(?:lakh|lac|lacs|lakhs)', s, re.IGNORECASE)
-    if m:
+def parse_amount_expression(s: str) -> Optional[int]:
+    """Parses expressions like '25k', '50k', '1.5 lakh', '50 lacs', '₹25,000', etc."""
+    if not s:
+        return None
+    clean = str(s).strip()
+
+    # 1. Lakhs
+    m_lakh = re.search(r'([\d\.]+)\s*(?:lakh|lac|lacs|lakhs)', clean, re.IGNORECASE)
+    if m_lakh:
         try:
-            return int(float(m.group(1)) * 100000)
+            return int(float(m_lakh.group(1)) * 100000)
         except Exception:
-            return None
+            pass
+
+    # 2. Thousands ('25k', '50 k')
+    m_k = re.search(r'([\d\.]+)\s*k\b', clean, re.IGNORECASE)
+    if m_k:
+        try:
+            return int(float(m_k.group(1)) * 1000)
+        except Exception:
+            pass
+
+    # 3. Clean numeric digits
+    num_str = re.sub(r'[^\d\.]', '', clean)
+    if num_str:
+        try:
+            return int(float(num_str))
+        except Exception:
+            pass
     return None
 
 
@@ -131,33 +152,35 @@ def extract_inputs_from_prompt(tmpl: TemplateManifest, text: str, initial_inputs
 
     # 6. Currency amounts
     # Monthly rent
-    rent_match = re.search(r'(?:rent|kiraya|monthly rent|monthly)\s*(?:is|of|amount|@)?\s*[:\-]?\s*(?:₹|rs\.?|inr)?\s*(\d[\d,]+|\d+(?:\.\d+)?\s*lakh)', text, re.IGNORECASE)
+    rent_match = re.search(r'(?:rent|kiraya|monthly rent|monthly)\s*(?:is|of|amount|@)?\s*[:\-]?\s*(?:₹|rs\.?|inr)?\s*(\d+(?:,\d+)*(?:\.\d+)?\s*(?:k|lakh|lac|lacs|lakhs)?)', text, re.IGNORECASE)
     if rent_match and "monthly_rent" in schema_fields and "monthly_rent" not in inputs:
-        raw_val = rent_match.group(1).replace(",", "").strip()
-        val = parse_lakh(raw_val) or int(float(raw_val))
-        inputs["monthly_rent"] = val
+        val = parse_amount_expression(rent_match.group(1))
+        if val:
+            inputs["monthly_rent"] = val
 
     # Security Deposit
-    dep_match = re.search(r'(?:deposit|security|security deposit|advance)\s*(?:is|of|amount)?\s*[:\-]?\s*(?:₹|rs\.?|inr)?\s*(\d[\d,]+|\d+(?:\.\d+)?\s*lakh)', text, re.IGNORECASE)
+    dep_match = re.search(r'(?:deposit|security|security deposit|advance)\s*(?:is|of|amount)?\s*[:\-]?\s*(?:₹|rs\.?|inr)?\s*(\d+(?:,\d+)*(?:\.\d+)?\s*(?:k|lakh|lac|lacs|lakhs)?)', text, re.IGNORECASE)
     if dep_match and "security_deposit" in schema_fields and "security_deposit" not in inputs:
-        raw_val = dep_match.group(1).replace(",", "").strip()
-        val = parse_lakh(raw_val) or int(float(raw_val))
-        inputs["security_deposit"] = val
+        val = parse_amount_expression(dep_match.group(1))
+        if val:
+            inputs["security_deposit"] = val
 
     # Cheque / Fee / General Amount
-    amt_match = re.search(r'(?:cheque amount|amount|fee|sum of|for ₹|for rs\.?)\s*[:\-]?\s*(?:₹|rs\.?|inr)?\s*(\d[\d,]+|\d+(?:\.\d+)?\s*lakh)', text, re.IGNORECASE)
+    amt_match = re.search(r'(?:cheque amount|amount|fee|sum of|for ₹|for rs\.?)\s*[:\-]?\s*(?:₹|rs\.?|inr)?\s*(\d+(?:,\d+)*(?:\.\d+)?\s*(?:k|lakh|lac|lacs|lakhs)?)', text, re.IGNORECASE)
     if amt_match:
-        raw_val = amt_match.group(1).replace(",", "").strip()
-        val = parse_lakh(raw_val) or int(float(raw_val))
-        if "cheque_amount" in schema_fields and "cheque_amount" not in inputs:
-            inputs["cheque_amount"] = val
-        if "fee_amount" in schema_fields and "fee_amount" not in inputs:
-            inputs["fee_amount"] = val
+        val = parse_amount_expression(amt_match.group(1))
+        if val:
+            if "cheque_amount" in schema_fields and "cheque_amount" not in inputs:
+                inputs["cheque_amount"] = val
+            if "fee_amount" in schema_fields and "fee_amount" not in inputs:
+                inputs["fee_amount"] = val
 
     # Maintenance charges
-    maint_match = re.search(r'(?:maintenance|society charges|cam charges)\s*(?:is|of|amount)?\s*[:\-]?\s*(?:₹|rs\.?|inr)?\s*(\d[\d,]+)', text, re.IGNORECASE)
+    maint_match = re.search(r'(?:maintenance|society charges|cam charges)\s*(?:is|of|amount)?\s*[:\-]?\s*(?:₹|rs\.?|inr)?\s*(\d+(?:,\d+)*(?:\.\d+)?\s*(?:k|lakh|lac|lacs|lakhs)?)', text, re.IGNORECASE)
     if maint_match and "maintenance_charges" in schema_fields and "maintenance_charges" not in inputs:
-        inputs["maintenance_charges"] = int(maint_match.group(1).replace(",", "").strip())
+        val = parse_amount_expression(maint_match.group(1))
+        if val:
+            inputs["maintenance_charges"] = val
 
     # 7. Dates
     date_matches = re.findall(r'\b(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})\b', text)

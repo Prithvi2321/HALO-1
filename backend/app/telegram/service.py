@@ -40,6 +40,20 @@ def escape_markdown_v2(text: str) -> str:
     return "".join(escaped)
 
 
+QUICK_COMMANDS_FOOTER = (
+    "\n\n━━━━━━━━━━━━━━━━━━━━\n"
+    "💡 *Quick Commands Guide:*\n"
+    "• `/draft <type> <info>` — Auto-draft legal form & PDF\n"
+    "• `/forms` — View available legal templates\n"
+    "• `/agenda today|tomorrow` — Hearings & deadlines\n"
+    "• `/cases [search]` — Active matters & dossiers\n"
+    "• `/note <case> <text>` — Record case notes\n"
+    "• `/notes <case>` — View case history\n"
+    "• `/news [topic]` — Live legal news\n"
+    "• `/help` — Full command guide"
+)
+
+
 class TelegramGatewayService:
     """Handles pairing and command processing for the Telegram Bot."""
 
@@ -130,7 +144,26 @@ class TelegramGatewayService:
         telegram_user_id: int,
         text: str,
         username: Optional[str] = None
-    ) -> str:
+    ) -> Any:
+        """Dispatches commands and attaches the quick command guide footer to all responses."""
+        reply = cls._dispatch_command(session, telegram_user_id, text, username)
+        parts = text.strip().split(maxsplit=1)
+        command = parts[0].lower() if parts else ""
+        if command not in ["/start", "/help"]:
+            if isinstance(reply, dict):
+                reply["text"] = reply.get("text", "") + QUICK_COMMANDS_FOOTER
+            elif isinstance(reply, str):
+                reply = reply + QUICK_COMMANDS_FOOTER
+        return reply
+
+    @classmethod
+    def _dispatch_command(
+        cls,
+        session: Session,
+        telegram_user_id: int,
+        text: str,
+        username: Optional[str] = None
+    ) -> Any:
         """Dispatches commands as specified in PRD §8.3."""
         parts = text.strip().split(maxsplit=1)
         command = parts[0].lower()

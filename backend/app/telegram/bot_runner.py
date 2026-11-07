@@ -34,13 +34,30 @@ API_BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 
 async def init_bot():
-    """Clears any conflicting webhooks so getUpdates works cleanly."""
+    """Clears any conflicting webhooks so getUpdates works cleanly and registers commands."""
     async with httpx.AsyncClient(timeout=15.0) as client:
         try:
             resp = await client.post(f"{API_BASE}/deleteWebhook", json={"drop_pending_updates": False})
             print(f"[Telegram Bot] deleteWebhook response: {resp.json()}")
         except Exception as e:
             print(f"[Telegram Bot] Warning: failed to delete webhook: {e}")
+
+        try:
+            bot_commands = [
+                {"command": "draft", "description": "Auto-draft legal form & PDF"},
+                {"command": "forms", "description": "Browse legal templates & examples"},
+                {"command": "agenda", "description": "View court hearings & schedule"},
+                {"command": "cases", "description": "List active legal matters"},
+                {"command": "note", "description": "Record case notes or oral orders"},
+                {"command": "notes", "description": "View recorded notes for a matter"},
+                {"command": "news", "description": "Live Indian legal & court news"},
+                {"command": "auth", "description": "Pair account with web dashboard"},
+                {"command": "help", "description": "Show complete command guide"},
+            ]
+            cmd_resp = await client.post(f"{API_BASE}/setMyCommands", json={"commands": bot_commands})
+            print(f"[Telegram Bot] setMyCommands response: {cmd_resp.json()}")
+        except Exception as e:
+            print(f"[Telegram Bot] Warning: failed to set commands: {e}")
 
 
 async def process_update(update: dict):
