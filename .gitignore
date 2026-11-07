@@ -3,6 +3,12 @@ venv/
 node_modules/
 *.db
 .env
+.env.*
+*.env
+**/.env
+**/.env.*
+!.env.example
+!backend/.env.example
 __pycache__/
 dist/
 .pytest_cache/

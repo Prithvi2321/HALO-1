@@ -53,6 +53,7 @@ CANONICAL_TEMPLATES: Dict[str, TemplateManifest] = {
                 {"id": "effective_date", "label": "Effective Appointment Date", "type": "date", "required": True},
                 {"id": "articles_authorise", "label": "Articles of Association authorise appointment of Additional Directors", "type": "boolean", "required": True, "default": True},
                 {"id": "co_signatory", "label": "Authorized Signatory / Chairman", "type": "string", "required": True, "placeholder": "Rajesh Kumar (Managing Director, DIN: 01452390)"},
+                {"id": "target_language", "label": "Output Language", "type": "select", "required": False, "default": "en", "options": [{"label": "English (Standard Legal)", "value": "en"}, {"label": "हिंदी (Hindi - Devnagari)", "value": "hi"}, {"label": "द्विभाषी (Bilingual - English + Hindi)", "value": "bilingual"}]},
             ],
             "conditional": [
                 {
@@ -61,7 +62,66 @@ CANONICAL_TEMPLATES: Dict[str, TemplateManifest] = {
                 }
             ]
         },
-        body_template="""CERTIFIED TRUE COPY OF THE RESOLUTION PASSED AT THE MEETING OF THE BOARD OF DIRECTORS OF {{ company_name | upper }} HELD ON {{ meeting_date_formatted }} AT {{ meeting_venue }}.
+        body_template="""{% if target_language == 'hi' %}
+{{ company_name | upper }} के निदेशक मंडल (बोर्ड ऑफ डायरेक्टर्स) की बैठक में पारित संकल्प की प्रमाणित प्रतिलिपि
+बैठक की तिथि: {{ meeting_date_formatted }} | बैठक का स्थान: {{ meeting_venue }}
+
+सीआईएन (CIN): {{ company_cin }}
+पंजीकृत कार्यालय (Registered Office): {{ registered_office }}
+
+------------------------------------------------------------------------------------------------------------------------
+सुश्री/श्री {{ director_name | upper }} (DIN: {{ director_din }}) की अतिरिक्त निदेशक (ADDITIONAL DIRECTOR) के रूप में नियुक्ति
+------------------------------------------------------------------------------------------------------------------------
+
+"यह संकल्प पारित किया गया कि कंपनी अधिनियम, 2013 की धारा 161(1) तथा अन्य लागू प्रावधानों (यदि कोई हो), तथा कंपनी के अंतर्नियमों (Articles of Association) के सुसंगत अनुच्छेदों के अनुसरण में, सुश्री/श्री {{ director_name }} (निदेशक पहचान संख्या / DIN: {{ director_din }}), जिन्होंने फॉर्म डीआईआर-2 (DIR-2) में निदेशक के रूप में कार्य करने की सहमति प्रदान की है तथा घोषित किया है कि वे अधिनियम की धारा 164 के अधीन निदेशक नियुक्त होने के लिए अयोग्य नहीं हैं, को {{ effective_date_formatted }} से कंपनी के निदेशक मंडल में अतिरिक्त निदेशक के रूप में नियुक्त किया जाता है।
+
+यह आगे संकल्प पारित किया गया कि सुश्री/श्री {{ director_name }} कंपनी की आगामी वार्षिक आम बैठक (AGM) की तिथि तक अथवा उस अंतिम तिथि तक जिस पर वार्षिक आम बैठक आयोजित की जानी चाहिए थी, जो भी पहले हो, पद धारण करेंगे।
+
+यह आगे संकल्प पारित किया गया कि {{ co_signatory }} को कंपनी की ओर से इस संकल्प को प्रभावी बनाने हेतु आवश्यक सभी कार्य, विलेख एवं औपचारिकताएं पूर्ण करने के लिए अधिकृत किया जाता है, जिसमें इस नियुक्ति के 30 दिनों के भीतर कंपनी रजिस्ट्रार (ROC) के समक्ष फॉर्म डीआईआर-12 (DIR-12) दाखिल करना तथा कंपनी के सांविधिक रजिस्टरों में अपेक्षित प्रविष्टियां करना सम्मिलित है।"
+
+कृते एवं कंपनी की ओर से
+{{ company_name | upper }}
+
+
+________________________________________
+{{ co_signatory }}
+तिथि: {{ meeting_date_formatted }}
+स्थान: {{ meeting_venue }}
+
+{% elif target_language == 'bilingual' %}
+CERTIFIED TRUE COPY OF BOARD RESOLUTION / निदेशक मंडल के संकल्प की प्रमाणित प्रतिलिपि
+APPOINTMENT OF ADDITIONAL DIRECTOR UNDER SECTION 161(1) OF COMPANIES ACT, 2013 / धारा 161(1) कंपनी अधिनियम के अधीन अतिरिक्त निदेशक नियुक्ति
+========================================================================================================================
+
+Company / कंपनी: {{ company_name | upper }}
+CIN / सीआईएन: {{ company_cin }}
+Registered Office / पंजीकृत कार्यालय: {{ registered_office }}
+Meeting Date / बैठक तिथि: {{ meeting_date_formatted }} | Venue / स्थान: {{ meeting_venue }}
+
+------------------------------------------------------------------------------------------------------------------------
+APPOINTMENT OF MS./MR. {{ director_name | upper }} (DIN: {{ director_din }}) AS AN ADDITIONAL DIRECTOR / सुश्री/श्री {{ director_name }} की नियुक्ति
+------------------------------------------------------------------------------------------------------------------------
+
+"RESOLVED THAT pursuant to the provisions of Section 161(1) and other applicable provisions of the Companies Act, 2013, Ms./Mr. {{ director_name }} (DIN: {{ director_din }}) be and is hereby appointed as an Additional Director of the Company with effect from {{ effective_date_formatted }}.
+(संकल्प पारित किया गया कि कंपनी अधिनियम, 2013 की धारा 161(1) के अंतर्गत सुश्री/श्री {{ director_name }} (DIN: {{ director_din }}) को {{ effective_date_formatted }} से कंपनी के अतिरिक्त निदेशक के रूप में नियुक्त किया जाता है।)
+
+RESOLVED FURTHER THAT Ms./Mr. {{ director_name }} shall hold office up to the date of the next Annual General Meeting (AGM) of the Company.
+(सुश्री/श्री {{ director_name }} कंपनी की आगामी वार्षिक आम बैठक की तिथि तक पद धारण करेंगे।)
+
+RESOLVED FURTHER THAT {{ co_signatory }} be and is hereby authorized to file Form DIR-12 with the Registrar of Companies (ROC) within 30 days and take all necessary steps to give effect to this resolution.
+({{ co_signatory }} को आरओसी के समक्ष 30 दिनों में फॉर्म डीआईआर-12 दाखिल करने तथा सभी आवश्यक कदम उठाने हेतु अधिकृत किया जाता है।)"
+
+For and on behalf of / कृते एवं कंपनी की ओर से:
+{{ company_name | upper }}
+
+
+________________________________________
+{{ co_signatory }}
+Date / दिनांक: {{ meeting_date_formatted }}
+Place / स्थान: {{ meeting_venue }}
+
+{% else %}
+CERTIFIED TRUE COPY OF THE RESOLUTION PASSED AT THE MEETING OF THE BOARD OF DIRECTORS OF {{ company_name | upper }} HELD ON {{ meeting_date_formatted }} AT {{ meeting_venue }}.
 
 CIN: {{ company_cin }}
 Registered Office: {{ registered_office }}
@@ -84,7 +144,7 @@ ________________________________________
 {{ co_signatory }}
 Date: {{ meeting_date_formatted }}
 Place: {{ meeting_venue }}
-"""
+{% endif %}"""
     ),
 
     # ─── 2. Petition — Oppression & Mismanagement (S.241/242 CA 2013) ────────
@@ -108,9 +168,85 @@ Place: {{ meeting_venue }}
                 {"id": "company_cin", "label": "Company CIN", "type": "string", "required": True, "validator": "cin", "placeholder": "L60200MH2008PLC184321"},
                 {"id": "oppressive_acts", "label": "Summary of Prejudicial & Oppressive Conduct", "type": "text", "required": True, "placeholder": "1. Siphoning of corporate funds through unapproved related-party contracts. 2. Purported rights issue engineered without statutory notice to dilute Petitioner below Section 244 threshold."},
                 {"id": "prayer_sought", "label": "Substantive Reliefs / Prayers Sought", "type": "text", "required": True, "placeholder": "Direct forensic investigation into accounts; Supersede existing board and appoint an independent administrator; Nullify illegal share allotment."},
+                {"id": "target_language", "label": "Output Language", "type": "select", "required": False, "default": "en", "options": [{"label": "English (Standard Legal)", "value": "en"}, {"label": "हिंदी (Hindi - Devnagari)", "value": "hi"}, {"label": "द्विभाषी (Bilingual - English + Hindi)", "value": "bilingual"}]},
             ]
         },
-        body_template="""IN THE NATIONAL COMPANY LAW TRIBUNAL
+        body_template="""{% if target_language == 'hi' %}
+राष्ट्रीय कंपनी विधि अधिकरण (NCLT) के समक्ष
+{{ nclt_bench | upper }}
+कंपनी याचिका संख्या: ______ वर्ष {{ case_year }}
+
+(कंपनी अधिनियम, 2013 की धारा 241 एवं 242 पठित धारा 244 के अधीन)
+
+मामले में:
+{{ petitioner_name }}
+... याचिकाकर्ता
+
+बनाम
+
+1. {{ respondent_company }}
+   (सीआईएन: {{ company_cin }})
+2. निदेशक मंडल / बहुमत शेयरधारक
+... प्रतिवादीगण
+
+कंपनी अधिनियम, 2013 की धारा 241 एवं 242 के अधीन कंपनी याचिका
+========================================================================================================================
+
+याचिकाकर्ता सादर निवेदन करता है:
+
+1. क्षेत्राधिकार एवं धारा 244 के अधीन वैधानिक अहर्ता (Locus Standi):
+   यह कि याचिकाकर्ता के पास प्रतिवादी सं. 1 कंपनी की निर्गमित एवं चुकता इक्विटी शेयर पूंजी का {{ petitioner_holding_pct }}% भाग है, जो कंपनी अधिनियम, 2013 की धारा 244(1)(a) के तहत निर्धारित वैधानिक अहर्ता (कम से कम 10% शेयरधारिता) को पूर्णतः संतुष्ट करता है।
+
+2. उत्पीड़नकारी एवं पूर्वाग्रहपूर्ण कार्यकलाप:
+   प्रतिवादी सं. 1 के कार्यकलापों का संचालन याचिकाकर्ता तथा जनहित के प्रति अत्यंत पूर्वाग्रहपूर्ण एवं उत्पीड़नकारी रीति से किया गया है, जो माननीय सर्वोच्च न्यायालय द्वारा टाटा कंसल्टेंसी सर्विसेज लि. बनाम साइरस इन्वेस्टमेंट्स प्रा. लि. (2021) 9 SCC 449 में प्रतिपादित सिद्धांतों का खुला उल्लंघन है:
+   {{ oppressive_acts }}
+
+3. न्यायसंगत एवं साम्यपूर्ण आधार (Just and Equitable Ground):
+   कंपनी का परिसमापन याचिकाकर्ता एवं वैध अंशधारकों के हितों पर अनुचित प्रतिकूल प्रभाव डालेगा, किंतु प्रस्तुत तथ्य धारा 242 के अधीन व्यापक सुधारात्मक अनुतोष प्रदान करने के पूर्ण आधार प्रदान करते हैं।
+
+प्रार्थना / याचना:
+अतः याचिकाकर्ता अत्यंत विनम्रतापूर्वक प्रार्थना करता है कि यह माननीय अधिकरण कृपापूर्वक निम्नलिखित अनुतोष प्रदान करने की कृपा करे:
+{{ prayer_sought }}
+
+याचिकाकर्ता
+द्वारा अधिवक्ता, याचिकाकर्ता
+स्थान: {{ nclt_bench }}
+दिनांक: {{ current_date_formatted }}
+
+{% elif target_language == 'bilingual' %}
+BEFORE THE HON'BLE NATIONAL COMPANY LAW TRIBUNAL / माननीय राष्ट्रीय कंपनी विधि अधिकरण
+{{ nclt_bench | upper }}
+COMPANY PETITION NO. ______ OF {{ case_year }} / कंपनी याचिका संख्या ______ वर्ष {{ case_year }}
+
+(Under Sections 241 & 242 r/w Section 244 of Companies Act, 2013 / धारा 241 व 242 के अंतर्गत)
+
+IN THE MATTER OF / मामले में:
+{{ petitioner_name }} ... PETITIONER / याचिकाकर्ता
+VERSUS / बनाम
+{{ respondent_company }} (CIN: {{ company_cin }}) & Ors. ... RESPONDENTS / प्रतिवादीगण
+
+COMPANY PETITION UNDER SECTION 241 & 242 / उत्पीड़न एवं कुप्रबंधन याचिका
+========================================================================================================================
+
+1. STANDING UNDER SECTION 244 / धारा 244 अहर्ता:
+   Petitioner holds {{ petitioner_holding_pct }}% equity share capital satisfying Section 244(1)(a).
+   (याचिकाकर्ता के पास {{ petitioner_holding_pct }}% शेयरधारिता है, जो धारा 244(1)(a) की 10% न्यूनतम वैधानिक शर्त को पूरा करती है।)
+
+2. OPPRESSION & MISMANAGEMENT / उत्पीड़नकारी आचरण:
+   The affairs of the Respondent Company are being conducted in an oppressive and prejudicial manner:
+   (कंपनी के मामलों का संचालन उत्पीड़नकारी एवं पूर्वाग्रहपूर्ण रीति से किया जा रहा है:)
+   {{ oppressive_acts }}
+
+3. PRAYERS / याचना:
+   WHEREFORE, Petitioner prays that this Hon'ble Tribunal may grant the following reliefs:
+   (अतः प्रार्थना है कि माननीय अधिकरण निम्नलिखित अनुतोष प्रदान करने की कृपा करे:)
+   {{ prayer_sought }}
+
+PETITIONER / याचिकाकर्ता
+Place / स्थान: {{ nclt_bench }} | Date / दिनांक: {{ current_date_formatted }}
+
+{% else %}
+IN THE NATIONAL COMPANY LAW TRIBUNAL
 {{ nclt_bench | upper }}
 COMPANY PETITION NO. ______ OF {{ case_year }}
 
@@ -150,7 +286,7 @@ PETITIONER
 Through Advocate for Petitioner
 Place: {{ nclt_bench }}
 Date: {{ current_date_formatted }}
-"""
+{% endif %}"""
     ),
 
     # ─── 3. Affidavit of Evidence (Order XIX R.3 CPC) ────────────────────────
@@ -176,9 +312,63 @@ Date: {{ current_date_formatted }}
                 {"id": "deponent_role", "label": "Deponent Capacity", "type": "string", "required": True, "placeholder": "Authorized Representative / Director"},
                 {"id": "affirmation_place", "label": "Place of Affirmation", "type": "string", "required": True, "default": "New Delhi"},
                 {"id": "facts_statement", "label": "Sworn Statements of Fact", "type": "text", "required": True, "placeholder": "1. That I am fully conversant with the facts. 2. That the defendant committed material breach of invoice payments totaling INR 48,50,000."},
+                {"id": "target_language", "label": "Output Language", "type": "select", "required": False, "default": "en", "options": [{"label": "English (Standard Legal)", "value": "en"}, {"label": "हिंदी (Hindi - Devnagari)", "value": "hi"}, {"label": "द्विभाषी (Bilingual - English + Hindi)", "value": "bilingual"}]},
             ]
         },
-        body_template="""{{ court | upper }}
+        body_template="""{% if target_language == 'hi' %}
+{{ court | upper }}
+{{ case_no }}
+मामले में:
+{{ cause_title }}
+
+साक्ष्य का शपथ पत्र (सिविल प्रक्रिया संहिता, 1908 के आदेश XIX नियम 3 के अधीन)
+========================================================================================================================
+
+मैं, {{ deponent_name }}, आयु लगभग {{ deponent_age }} वर्ष, पुत्र/पुत्री {{ deponent_parent }}, निवासी {{ deponent_address }}, सत्यनिष्ठापूर्वक प्रतिज्ञान करता/करती हूँ एवं शपथ पर निम्नलिखित कथन करता/करती हूँ:
+
+1. यह कि मैं याचिकाकर्ता/वादी का/की {{ deponent_role }} हूँ और वर्तमान वाद के तथ्यों एवं परिस्थितियों से पूर्णतः अवगत हूँ, तथा इस रूप में यह शपथ पत्र प्रस्तुत करने एवं साक्ष्य देने हेतु पूर्ण सक्षम हूँ।
+
+2. यह कि नीचे दिए गए प्रस्तरों में किए गए कथन मेरे अधिकृत अभिलेखों, खातों एवं पत्राचार के आधार पर मेरे ज्ञान में सत्य एवं सही हैं:
+{{ facts_statement }}
+
+3. यह कि सर्वोच्च न्यायालय द्वारा सत्यध्यान घोषाल बनाम देवराजिन देबी, AIR 1960 SC 941 में प्रतिपादित विधिक सिद्धांत के अधीन, इस कार्यवाही में निर्णीत बिंदु पक्षकारों के मध्य अंतिम रूप से बाध्यकारी हैं।
+
+शपथकर्ता (DEPONENT)
+
+सत्यापन (VERIFICATION):
+आज दिनांक {{ current_date_formatted }} को स्थान {{ affirmation_place }} पर सत्यापित किया जाता है कि उपरोक्त शपथ पत्र की संपूर्ण सामग्री मेरे ज्ञान में सत्य एवं सही है, इसका कोई भी भाग असत्य नहीं है और इसमें से कोई भी तात्विक तथ्य छिपाया नहीं गया है।
+
+शपथकर्ता (DEPONENT)
+
+{% elif target_language == 'bilingual' %}
+{{ court | upper }}
+{{ case_no }}
+IN THE MATTER OF / मामले में: {{ cause_title }}
+
+AFFIDAVIT OF EVIDENCE UNDER ORDER XIX RULE 3 CPC / साक्ष्य का शपथ पत्र (आदेश XIX नियम 3 सीपीसी)
+========================================================================================================================
+
+I, {{ deponent_name }}, Age {{ deponent_age }} yrs, S/o or D/o {{ deponent_parent }}, R/o {{ deponent_address }}, do hereby solemnly affirm and state:
+(मैं, {{ deponent_name }}, आयु {{ deponent_age }} वर्ष, निवासी {{ deponent_address }}, सत्यनिष्ठापूर्वक शपथ पर कथन करता हूँ:)
+
+1. That I am the {{ deponent_role }} of the Petitioner/Plaintiff and fully conversant with the facts of the case.
+   (मैं वादी/याचिकाकर्ता का {{ deponent_role }} हूँ तथा मामले के तथ्यों से भलीभांति परिचित हूँ।)
+
+2. STATEMENT OF FACTS / तथ्यों का विवरण:
+{{ facts_statement }}
+
+3. Binding precedent: Satyadhyan Ghosal v. Deorajin Debi, AIR 1960 SC 941.
+
+DEPONENT / शपथकर्ता
+
+VERIFICATION / सत्यापन:
+Verified at {{ affirmation_place }} on {{ current_date_formatted }} that contents are true and correct.
+(दिनांक {{ current_date_formatted }} को स्थान {{ affirmation_place }} पर सत्यापित किया गया कि समस्त कथन सत्य एवं सही हैं।)
+
+DEPONENT / शपथकर्ता
+
+{% else %}
+{{ court | upper }}
 {{ case_no }}
 IN THE MATTER OF:
 {{ cause_title }}
@@ -201,7 +391,7 @@ VERIFICATION:
 Verified at {{ affirmation_place }} on this {{ current_date_formatted }} that the contents of the above affidavit are true and correct to my knowledge, no part of it is false, and nothing material has been concealed therefrom.
 
 DEPONENT
-"""
+{% endif %}"""
     ),
 
     # ─── 4. Director Due-Diligence Affidavit (Sec 179 IT Act) ─────────────────
@@ -224,9 +414,62 @@ DEPONENT
                 {"id": "deponent_pan", "label": "Director PAN", "type": "string", "required": True, "validator": "pan", "placeholder": "ABCDE1234F"},
                 {"id": "company_name", "label": "Corporate Debtor / Assessee Company", "type": "string", "required": True, "placeholder": "Zenith Infra Limited"},
                 {"id": "due_diligence_facts", "label": "Affirmative Due Diligence Facts", "type": "text", "required": True, "placeholder": "Appointed solely as a non-executive nominee director; had no cheque-signing or day-to-day statutory remittance authority; recorded written dissents regarding delayed tax filings."},
+                {"id": "target_language", "label": "Output Language", "type": "select", "required": False, "default": "en", "options": [{"label": "English (Standard Legal)", "value": "en"}, {"label": "हिंदी (Hindi - Devnagari)", "value": "hi"}, {"label": "द्विभाषी (Bilingual - English + Hindi)", "value": "bilingual"}]},
             ]
         },
-        body_template="""{{ court | upper }}
+        body_template="""{% if target_language == 'hi' %}
+{{ court | upper }}
+आयकर अधिनियम, 1961 की धारा 179 के अधीन वसूली कार्यवाही के संबंध में
+कर निर्धारण वर्ष: {{ assessment_year }}
+संदर्भ में: {{ company_name }}
+
+पूर्व / नामित निदेशक द्वारा सम्यक तत्परता (DUE DILIGENCE) का शपथ पत्र
+========================================================================================================================
+
+मैं, {{ deponent_name }} (DIN: {{ deponent_din }}, PAN: {{ deponent_pan }}), सत्यनिष्ठापूर्वक शपथपूर्वक कथन करता हूँ कि:
+
+1. यह कि मैं {{ company_name }} के निदेशक मंडल में केवल एक गैर-कार्यकारी (Non-Executive) निदेशक के रूप में नियुक्त था और कभी भी सांविधिक भुगतानों अथवा कंपनी के दिन-प्रतिदिन के वित्तीय संचालन के नियंत्रण में नहीं रहा हूँ।
+
+2. यह कि कर बकाए की किसी भी वसूली की विफलता को मेरे किसी भी घोर उपेक्षा, अवचार (Misfeasance) अथवा वैधानिक कर्तव्य भंग का परिणाम नहीं माना जा सकता।
+
+3. सर्वोच्च न्यायालय के निर्णयों के अनुसार सम्यक तत्परता:
+   माननीय सर्वोच्च न्यायालय द्वारा पी.आर. सीआईटी बनाम सीमेंस लि. (2017) 394 ITR 1 (SC) में प्रतिपादित विधि के अनुसार, धारा 179 के अधीन व्यक्तिगत दायित्व ऐसे निदेशक पर आरोपित नहीं किया जा सकता जो अपनी निर्दोषिता तथा सम्यक तत्परता (Due Diligence) सिद्ध करता है:
+{{ due_diligence_facts }}
+
+शपथकर्ता (DEPONENT)
+
+सत्यापन (VERIFICATION):
+नई दिल्ली में दिनांक {{ current_date_formatted }} को सत्यापित किया जाता है कि इसमें दिए गए कथन मेरे सर्वोत्तम ज्ञान एवं अभिलेखों के अनुसार सत्य एवं सही हैं।
+
+शपथकर्ता (DEPONENT)
+
+{% elif target_language == 'bilingual' %}
+{{ court | upper }}
+PROCEEDINGS UNDER SECTION 179, INCOME TAX ACT, 1961 / धारा 179 आयकर अधिनियम, 1961
+ASSESSMENT YEAR / कर निर्धारण वर्ष: {{ assessment_year }} | IN RE / संदर्भ: {{ company_name }}
+
+AFFIDAVIT OF DUE DILIGENCE BY DIRECTOR / निदेशक द्वारा सम्यक तत्परता का शपथ पत्र
+========================================================================================================================
+
+I, {{ deponent_name }} (DIN: {{ deponent_din }}, PAN: {{ deponent_pan }}), do solemnly affirm:
+(मैं, {{ deponent_name }}, (DIN: {{ deponent_din }}, PAN: {{ deponent_pan }}), शपथपूर्वक कथन करता हूँ:)
+
+1. That I was a non-executive director with no operational control over statutory remittances.
+   (मैं कंपनी में केवल एक गैर-कार्यकारी निदेशक था तथा वित्तीय भुगतानों पर मेरा कोई परिचालन नियंत्रण नहीं था।)
+
+2. AFFIRMATIVE DUE DILIGENCE / सम्यक तत्परता के तथ्य (Pr. CIT v. Siemens Ltd. (2017) 394 ITR 1 SC):
+{{ due_diligence_facts }}
+
+DEPONENT / शपथकर्ता
+
+VERIFICATION / सत्यापन:
+Verified on {{ current_date_formatted }} that statements are true and correct.
+(दिनांक {{ current_date_formatted }} को सत्यापित किया गया कि उक्त विवरण सत्य एवं सही है।)
+
+DEPONENT / शपथकर्ता
+
+{% else %}
+{{ court | upper }}
 IN THE MATTER OF RECOVERY PROCEEDINGS UNDER SECTION 179 OF THE INCOME TAX ACT, 1961
 ASSESSMENT YEAR: {{ assessment_year }}
 IN RE: {{ company_name }}
@@ -250,7 +493,7 @@ VERIFICATION:
 Verified at New Delhi on {{ current_date_formatted }} that the statements made herein are true to the best of my knowledge and records.
 
 DEPONENT
-"""
+{% endif %}"""
     ),
 
     # ─── 5. Statutory Demand Notice (Sec 138 NI Act) ─────────────────────────
@@ -276,10 +519,79 @@ DEPONENT
                 {"id": "dishonour_date", "label": "Bank Return Memo Date", "type": "date", "required": True, "validator": "date_not_future"},
                 {"id": "dishonour_reason", "label": "Reason for Dishonour", "type": "select", "required": True, "options": ["Funds Insufficient", "Account Closed", "Stop Payment by Drawer", "Signatures Differ"]},
                 {"id": "advocate_name", "label": "Advocate Sending Notice", "type": "string", "required": True, "placeholder": "Adv. Prithviraj Patil"},
+                {"id": "target_language", "label": "Output Language", "type": "select", "required": False, "default": "en", "options": [{"label": "English (Standard Legal)", "value": "en"}, {"label": "हिंदी (Hindi - Devnagari)", "value": "hi"}, {"label": "द्विभाषी (Bilingual - English + Hindi)", "value": "bilingual"}]},
             ]
         },
-        body_template="""LEGAL DEMAND NOTICE UNDER SECTION 138 OF THE NEGOTIABLE INSTRUMENTS ACT, 1881
+        body_template="""{% if target_language == 'hi' %}
+विधिक मांग सूचना (LEGAL DEMAND NOTICE)
+धारा 138 एवं 142, परक्राम्य लिखत अधिनियम, 1881 (पंजीकृत डाक / स्पीड पोस्ट द्वारा)
+========================================================================================================================
+
+दिनांक: {{ current_date_formatted }}
+
+सेवा में,
+{{ drawer_name }}
+{{ drawer_address }}
+
+मेरे पक्षकार (शिकायतकर्ता) की ओर से एवं उनके निर्देशानुसार:
+{{ payee_name }} (जिन्हें आगे "मेरे पक्षकार" कहा गया है)
+
+महोदय/महोदया,
+
+अपने उक्त पक्षकार के स्पष्ट निर्देशों के तहत, मैं आपको परक्राम्य लिखत अधिनियम, 1881 की धारा 138 के अधीन निम्नलिखित सांविधिक विधिक मांग सूचना प्रेषित करता हूँ:
+
+1. यह कि आपके द्वारा मेरे पक्षकार के प्रति वैध रूप से प्रवर्तनीय ऋण एवं दायित्व के भुगतान हेतु चेक संख्या {{ cheque_no }} दिनांक {{ cheque_date_formatted }} राशि {{ formatted_currency }} ({{ amount_in_words }}) जारी किया गया था, जो बैंक {{ bank_name }} पर देय था।
+
+2. यह कि मेरे पक्षकार द्वारा उक्त चेक को अपने बैंक के माध्यम से भुगतान हेतु प्रस्तुत करने पर, उक्त चेक आपके बैंक द्वारा रिटर्न मेमो दिनांक {{ dishonour_date_formatted }} के माध्यम से बिना भुगतान किए अनादरित (Dishonour) कर वापस लौटा दिया गया, जिसका कारण "{{ dishonour_reason }}" दर्शाया गया।
+
+3. यह कि चेक अनादर की लिखित सूचना मेरे पक्षकार को सांविधिक 30 दिनों की निर्धारित अवधि के भीतर प्राप्त हुई है।
+
+4. अतः इस सूचना के माध्यम से मैं आपको निर्देशित करता हूँ कि आप इस विधिक सूचना की प्राप्ति के 15 (पंद्रह) दिनों के भीतर उक्त राशि {{ formatted_currency }} का पूर्ण भुगतान मेरे पक्षकार को अनिवार्य रूप से कर दें। 
+
+यदि आप उक्त 15 दिनों की अवधि में भुगतान करने में विफल रहते हैं, तो मेरे पक्षकार आपके विरुद्ध परक्राम्य लिखत अधिनियम, 1881 की धारा 138/142 एवं भारतीय न्याय संहिता / भा.दं.सं. के अधीन सक्षम न्यायालय में आपराधिक परिवाद (Criminal Complaint) दायर करने के लिए पूर्णतः स्वतंत्र होंगे, जिसकी संपूर्ण वैधानिक एवं आर्थिक जिम्मेदारी आपकी स्वयं की होगी।
+
+भवदीय,
+
+________________________________________
+{{ advocate_name }}
+अधिवक्ता, पक्षकार / शिकायतकर्ता
+
+{% elif target_language == 'bilingual' %}
+STATUTORY DEMAND NOTICE / सांविधिक विधिक मांग सूचना
+SECTION 138 OF THE NEGOTIABLE INSTRUMENTS ACT, 1881 / परक्राम्य लिखत अधिनियम धारा 138
+========================================================================================================================
+
+Date / दिनांक: {{ current_date_formatted }}
+
+TO / प्रेषित:
+{{ drawer_name }}
+{{ drawer_address }}
+
+UNDER INSTRUCTIONS FROM MY CLIENT / मेरे पक्षकार के निर्देशानुसार:
+{{ payee_name }} ("My Client" / "मेरे पक्षकार")
+
+1. CHEQUE DETAILS / चेक का विवरण:
+   In discharge of your legally enforceable debt, you issued Cheque No. {{ cheque_no }} dated {{ cheque_date_formatted }} for ₹ {{ cheque_amount }}/- ({{ amount_in_words }}) drawn on {{ bank_name }}.
+   (आपके द्वारा वैध ऋण के भुगतान हेतु चेक संख्या {{ cheque_no }} दिनांक {{ cheque_date_formatted }} राशि ₹ {{ cheque_amount }}/- जारी किया गया था।)
+
+2. DISHONOUR / चेक का अनादर:
+   The said instrument was dishonoured and returned unpaid vide Bank Memo dated {{ dishonour_date_formatted }} for reason: "{{ dishonour_reason }}".
+   (उक्त चेक आपके बैंक द्वारा बैंक मेमो दिनांक {{ dishonour_date_formatted }} के द्वारा "{{ dishonour_reason }}" के कारण अनादरित कर वापस किया गया।)
+
+3. 15-DAY STATUTORY DEMAND / 15-दिवसीय अनिवार्य मांग:
+   I hereby call upon you to make the payment of ₹ {{ cheque_amount }}/- within FIFTEEN (15) DAYS from the receipt of this notice.
+   (अतः इस सूचना प्राप्ति के 15 दिवस के भीतर उक्त संपूर्ण राशि का भुगतान अनिवार्य रूप से करें अन्यथा आपके विरुद्ध न्यायालय में आपराधिक परिवाद दायर किया जाएगा।)
+
+Yours faithfully / भवदीय,
+
+________________________________________
+{{ advocate_name }}
+Advocate for the Payee / अधिवक्ता
+
+{% else %}
+LEGAL DEMAND NOTICE UNDER SECTION 138 OF THE NEGOTIABLE INSTRUMENTS ACT, 1881
 (REGISTERED POST A.D. & SPEED POST)
+========================================================================================================================
 
 Date: {{ current_date_formatted }}
 
@@ -307,7 +619,7 @@ Yours faithfully,
 ________________________________________
 {{ advocate_name }}
 Advocate for the Complainant / Payee
-"""
+{% endif %}"""
     ),
 
     # ─── 6. Generic Board Resolution ─────────────────────────────────────────
@@ -328,9 +640,46 @@ Advocate for the Complainant / Payee
                 {"id": "meeting_date", "label": "Meeting Date", "type": "date", "required": True, "validator": "date_not_future"},
                 {"id": "resolution_body", "label": "Text of Resolutions Passed", "type": "text", "required": True, "placeholder": "RESOLVED THAT a banking account be opened in the name of the Company..."},
                 {"id": "signatory", "label": "Authorized Signatory", "type": "string", "required": True, "placeholder": "Director / Company Secretary"},
+                {"id": "target_language", "label": "Output Language", "type": "select", "required": False, "default": "en", "options": [{"label": "English (Standard Legal)", "value": "en"}, {"label": "हिंदी (Hindi - Devnagari)", "value": "hi"}, {"label": "द्विभाषी (Bilingual - English + Hindi)", "value": "bilingual"}]},
             ]
         },
-        body_template="""CERTIFIED TRUE COPY OF THE RESOLUTION PASSED AT THE BOARD MEETING OF {{ company_name | upper }} HELD ON {{ meeting_date_formatted }}.
+        body_template="""{% if target_language == 'hi' %}
+{{ company_name | upper }} के निदेशक मंडल की बैठक में पारित संकल्प की प्रमाणित प्रतिलिपि
+बैठक की तिथि: {{ meeting_date_formatted }}
+
+सीआईएन (CIN): {{ company_cin }}
+
+विषय: {{ resolution_subject | upper }}
+========================================================================================================================
+
+"{{ resolution_body }}"
+
+सत्यापित सत्य प्रतिलिपि,
+कृते {{ company_name | upper }}
+
+
+________________________________________
+{{ signatory }}
+
+{% elif target_language == 'bilingual' %}
+CERTIFIED TRUE COPY OF BOARD RESOLUTION / निदेशक मंडल के संकल्प की प्रमाणित प्रतिलिपि
+COMPANY / कंपनी: {{ company_name | upper }} | CIN: {{ company_cin }}
+MEETING DATE / बैठक तिथि: {{ meeting_date_formatted }}
+
+SUBJECT / विषय: {{ resolution_subject | upper }}
+========================================================================================================================
+
+"{{ resolution_body }}"
+
+Certified True Copy / प्रमाणित सत्य प्रतिलिपि,
+For / कृते {{ company_name | upper }}
+
+
+________________________________________
+{{ signatory }}
+
+{% else %}
+CERTIFIED TRUE COPY OF THE RESOLUTION PASSED AT THE BOARD MEETING OF {{ company_name | upper }} HELD ON {{ meeting_date_formatted }}.
 
 CIN: {{ company_cin }}
 
@@ -342,9 +691,10 @@ SUBJECT: {{ resolution_subject | upper }}
 Certified True Copy,
 For {{ company_name | upper }}
 
+
 ________________________________________
 {{ signatory }}
-"""
+{% endif %}"""
     ),
 
     # ─── 7. MGT-14 Filing Cover Note (S.117 CA 2013) ─────────────────────────
@@ -365,9 +715,65 @@ ________________________________________
                 {"id": "resolution_date", "label": "Date of Resolution Passed", "type": "date", "required": True, "validator": "date_not_future"},
                 {"id": "purpose", "label": "Purpose of Filing", "type": "string", "required": True, "placeholder": "Filing of Special Resolution passed under Section 180(1)(c) for borrowing limits"},
                 {"id": "professional_name", "label": "Certifying Practising Professional", "type": "string", "required": True, "placeholder": "FCS Anand Gupta (CP No. 8912)"},
+                {"id": "target_language", "label": "Output Language", "type": "select", "required": False, "default": "en", "options": [{"label": "English (Standard Legal)", "value": "en"}, {"label": "हिंदी (Hindi - Devnagari)", "value": "hi"}, {"label": "द्विभाषी (Bilingual - English + Hindi)", "value": "bilingual"}]},
             ]
         },
-        body_template="""MEMORANDUM & COMPLIANCE COVER NOTE FOR FORM MGT-14
+        body_template="""{% if target_language == 'hi' %}
+फॉर्म एमजीटी-14 (FORM MGT-14) हेतु अनुपालन एवं ज्ञापन पत्र
+कंपनी अधिनियम, 2013 की धारा 117(1) के अनुसरण में
+========================================================================================================================
+
+सेवा में,
+कंपनी रजिस्ट्रार (ROC),
+{{ roc_jurisdiction | upper }}
+
+संदर्भ: {{ company_name | upper }} (सीआईएन: {{ company_cin }})
+
+विषय: फॉर्म एमजीटी-14 में संकल्पों एवं अनुबंधों का सांविधिक ई-फाइलिंग
+
+1. सांविधिक समय-सीमा आवश्यकता:
+   कंपनी अधिनियम, 2013 की धारा 117(1) के अनुसार, धारा 117(3) के अधीन पारित प्रत्येक संकल्प की प्रति इसके पारित होने के तीस (30) दिनों के भीतर रजिस्ट्रार के समक्ष अनिवार्य रूप से दाखिल की जानी चाहिए।
+
+2. संकल्प का विवरण:
+   - संकल्प पारित होने की तिथि: {{ resolution_date_formatted }}
+   - सांविधिक उद्देश्य: {{ purpose }}
+   - वैधानिक देय तिथि (30 दिन): {{ due_date_formatted }}
+
+3. पेशेवर प्रमाणीकरण:
+   अधोहस्ताक्षरी कार्यरत कंपनी सचिव (PCS) ने अभिलेखों, कार्यवृत्त एवं रजिस्टरों का परीक्षण किया है और प्रमाणित करता है कि उक्त संकल्प कंपनी अधिनियम, 2013 के प्रावधानों के अनुरूप है।
+
+प्रमाणित कर्ता:
+________________________________________
+{{ professional_name }}
+दिनांक: {{ current_date_formatted }}
+
+{% elif target_language == 'bilingual' %}
+MEMORANDUM & COMPLIANCE COVER NOTE FOR FORM MGT-14 / फॉर्म एमजीटी-14 अनुपालन पत्र
+PURSUANT TO SECTION 117(1) COMPANIES ACT, 2013 / धारा 117(1) कंपनी अधिनियम के अंतर्गत
+========================================================================================================================
+
+TO / सेवा में:
+THE REGISTRAR OF COMPANIES / कंपनी रजिस्ट्रार, {{ roc_jurisdiction | upper }}
+
+IN RE / संदर्भ: {{ company_name | upper }} (CIN: {{ company_cin }})
+SUBJECT / विषय: STATUTORY FILING OF FORM MGT-14 / एमजीटी-14 की सांविधिक फाइलिंग
+
+1. RESOLUTION DETAILS / संकल्प का विवरण:
+   - Date of Passing / पारित तिथि: {{ resolution_date_formatted }}
+   - Purpose / उद्देश्य: {{ purpose }}
+   - Due Date (30 Days) / अंतिम देय तिथि: {{ due_date_formatted }}
+
+2. CERTIFICATION / प्रमाणीकरण:
+   Certified that the resolution complies with the provisions of Companies Act, 2013.
+   (प्रमाणित किया जाता है कि संकल्प कंपनी अधिनियम के प्रावधानों के अनुरूप है।)
+
+Certified by / प्रमाणित कर्ता:
+________________________________________
+{{ professional_name }}
+Date / दिनांक: {{ current_date_formatted }}
+
+{% else %}
+MEMORANDUM & COMPLIANCE COVER NOTE FOR FORM MGT-14
 PURSUANT TO SECTION 117(1) OF THE COMPANIES ACT, 2013
 ========================================================================================================================
 
@@ -394,7 +800,7 @@ Certified by:
 ________________________________________
 {{ professional_name }}
 Date: {{ current_date_formatted }}
-"""
+{% endif %}"""
     ),
 
     # ─── 8. Residential & Commercial Rent Agreement (Multilingual) ────────────
@@ -574,10 +980,90 @@ LESSEE: ________________________________________
                 {"id": "purpose", "label": "Purpose of Disclosure", "type": "text", "required": True, "placeholder": "Evaluating a strategic joint-venture partnership and API data integration for legal technologies."},
                 {"id": "duration_years", "label": "Confidentiality Duration (Years)", "type": "number", "required": True, "default": 2},
                 {"id": "governing_city", "label": "Governing Court Jurisdiction", "type": "string", "required": True, "default": "New Delhi", "placeholder": "New Delhi / Mumbai / Bengaluru"},
-                {"id": "effective_date", "label": "Effective Date", "type": "date", "required": True}
+                {"id": "effective_date", "label": "Effective Date", "type": "date", "required": True},
+                {"id": "target_language", "label": "Output Language", "type": "select", "required": True, "default": "en", "options": [
+                    {"label": "English (Standard Legal)", "value": "en"},
+                    {"label": "हिंदी (Hindi Devnagari)", "value": "hi"},
+                    {"label": "Bilingual (English + हिंदी)", "value": "bilingual"}
+                ]}
             ]
         },
-        body_template="""MUTUAL NON-DISCLOSURE AND CONFIDENTIALITY AGREEMENT
+        body_template="""{% if target_language == 'hi' %}
+गैर-प्रकटीकरण एवं गोपनीयता अनुबंध (NON-DISCLOSURE AGREEMENT)
+(भारतीय अनुबंध अधिनियम, 1872 की धारा 27 के तहत)
+========================================================================================================================
+
+यह अनुबंध आज दिनांक {{ effective_date_formatted }} को निम्नलिखित पक्षों के मध्य निष्पादित किया गया:
+
+1. {{ disclosing_party }}, जिसका पंजीकृत कार्यालय:
+   {{ disclosing_address }}
+   (जिन्हें आगे "प्रकटीकरण पक्ष / DISCLOSING PARTY" कहा गया है)
+
+तथा
+
+2. {{ receiving_party }}, जिसका मुख्य कार्यालय:
+   {{ receiving_address }}
+   (जिन्हें आगे "प्राप्तकर्ता पक्ष / RECEIVING PARTY" कहा गया है)
+
+चूंकि दोनों पक्ष निम्नलिखित व्यावसायिक उद्देश्य हेतु गोपनीय सूचनाएं साझा करना चाहते हैं:
+"{{ purpose }}"
+
+अतः अब दोनों पक्ष निम्नलिखित शर्तों पर परस्पर सहमत होते हैं:
+
+1. गोपनीय सूचना की परिभाषा:
+   इसके अंतर्गत सभी तकनीकी डेटा, व्यापारिक रहस्य, प्रोप्राइटरी एल्गोरिदम, वित्तीय मॉडल, क्लाइंट डेटा और सॉफ्टवेयर सोर्स कोड सम्मिलित होंगे।
+
+2. गोपनीयता बनाए रखने का दायित्व:
+   प्राप्तकर्ता पक्ष यह वचन देता है कि वह सभी गोपनीय सूचनाओं को पूर्णतः सुरक्षित रखेगा तथा प्रकटीकरण पक्ष की पूर्व लिखित अनुमति के बिना किसी तीसरे पक्ष को प्रकट नहीं करेगा।
+
+3. गोपनीयता की अवधि:
+   गोपनीयता बनाए रखने की बाध्यता इस अनुबंध के प्रारंभ होने की तिथि से कुल {{ duration_years }} वर्ष की अवधि तक पूर्णतः प्रभावी रहेगी।
+
+4. अधिकार क्षेत्र एवं शासी विधि:
+   यह अनुबंध भारतीय विधियों के अधीन शासित होगा तथा किसी भी विवाद की स्थिति में केवल {{ governing_city }} स्थित सक्षम न्यायालयों का ही अनन्य क्षेत्राधिकार होगा।
+
+हस्ताक्षर प्रकटीकरण पक्ष:
+________________________________________
+प्राधिकृत हस्ताक्षरकर्ता ({{ disclosing_party }})
+
+हस्ताक्षर प्राप्तकर्ता पक्ष:
+________________________________________
+प्राधिकृत हस्ताक्षरकर्ता ({{ receiving_party }})
+
+{% elif target_language == 'bilingual' %}
+MUTUAL NON-DISCLOSURE AGREEMENT / पारस्परिक गोपनीयता अनुबंध
+INDIAN CONTRACT ACT, 1872 / भारतीय अनुबंध अधिनियम, 1872
+========================================================================================================================
+
+Effective Date / प्रभावी तिथि: {{ effective_date_formatted }}
+
+PARTIES / पक्षकार:
+1. {{ disclosing_party }} (Disclosing Party / प्रकटीकरण पक्ष)
+   Address: {{ disclosing_address }}
+2. {{ receiving_party }} (Receiving Party / प्राप्तकर्ता पक्ष)
+   Address: {{ receiving_address }}
+
+PURPOSE / उद्देश्य:
+"{{ purpose }}"
+
+1. CONFIDENTIALITY / गोपनीयता:
+   The Receiving Party agrees to maintain strict confidentiality of all proprietary IP, trade secrets, and source code.
+   (प्राप्तकर्ता पक्ष सभी व्यापारिक रहस्यों एवं बौद्धिक संपदा की पूर्ण गोपनीयता बनाए रखने हेतु बाध्य है।)
+
+2. TERM / अवधि:
+   This covenant shall remain in force for a period of {{ duration_years }} Years.
+   (यह गोपनीयता दायित्व कुल {{ duration_years }} वर्ष की अवधि तक प्रभावी रहेगा।)
+
+3. JURISDICTION / क्षेत्राधिकार:
+   Courts at {{ governing_city }} shall possess exclusive jurisdiction.
+   ({{ governing_city }} स्थित सक्षम न्यायालयों का अनन्य अधिकार क्षेत्र होगा।)
+
+Authorized Signatures / प्राधिकृत हस्ताक्षर:
+______________________                      ______________________
+{{ disclosing_party }}                      {{ receiving_party }}
+
+{% else %}
+MUTUAL NON-DISCLOSURE AND CONFIDENTIALITY AGREEMENT
 PURSUANT TO THE INDIAN CONTRACT ACT, 1872
 ========================================================================================================================
 
@@ -604,7 +1090,7 @@ NOW, THEREFORE, the parties agree as follows:
    The Receiving Party agrees to hold all Confidential Information in strict trust and confidence and shall not disclose it to third parties without prior written consent.
 
 3. TERM OF PROTECTION:
-   The obligations of confidentiality shall survive for a period of {{ duration_years }} ({{ duration_years | words | default(duration_years) }}) YEARS from the Effective Date.
+   The obligations of confidentiality shall survive for a period of {{ duration_years }} ({{ duration_years | default(2) }}) YEARS from the Effective Date.
 
 4. GOVERNING LAW & JURISDICTION:
    This Agreement shall be governed by the laws of India. The courts at {{ governing_city }} shall have exclusive jurisdiction over any disputes.
@@ -618,7 +1104,7 @@ Authorized Signatory
 For {{ receiving_party | upper }}:
 ________________________________________
 Authorized Signatory
-"""
+{% endif %}"""
     ),
 
     # ─── 10. Independent Consultant Agreement ─────────────────────────────────
@@ -640,10 +1126,80 @@ Authorized Signatory
                 {"id": "fee_amount", "label": "Professional Fee (₹)", "type": "currency", "required": True, "placeholder": "150000"},
                 {"id": "payment_milestones", "label": "Payment Terms & Milestones", "type": "string", "required": True, "default": "50% advance upon signing, 50% upon milestone deliverables acceptance"},
                 {"id": "effective_date", "label": "Commencement Date", "type": "date", "required": True},
-                {"id": "notice_period_days", "label": "Termination Notice Period (Days)", "type": "number", "required": True, "default": 15}
+                {"id": "notice_period_days", "label": "Termination Notice Period (Days)", "type": "number", "required": True, "default": 15},
+                {"id": "target_language", "label": "Output Language", "type": "select", "required": True, "default": "en", "options": [
+                    {"label": "English (Standard Legal)", "value": "en"},
+                    {"label": "हिंदी (Hindi Devnagari)", "value": "hi"},
+                    {"label": "Bilingual (English + हिंदी)", "value": "bilingual"}
+                ]}
             ]
         },
-        body_template="""INDEPENDENT CONSULTANT & PROFESSIONAL SERVICES AGREEMENT
+        body_template="""{% if target_language == 'hi' %}
+स्वतंत्र परामर्शदाता एवं व्यावसायिक सेवा अनुबंध (INDEPENDENT CONSULTANT AGREEMENT)
+(भारतीय अनुबंध अधिनियम, 1872 एवं कॉपीराइट अधिनियम, 1957 की धारा 17 के तहत)
+========================================================================================================================
+
+यह अनुबंध आज दिनांक {{ effective_date_formatted }} को निम्नलिखित पक्षों के मध्य निष्पादित किया गया:
+
+क्लाइंट / कंपनी:
+{{ client_name }} (जिन्हें आगे "कंपनी / प्रथम पक्ष" कहा गया है)
+
+तथा
+
+स्वतंत्र परामर्शदाता:
+{{ consultant_name }} (पैन: {{ consultant_pan | default('उपलब्ध नहीं') }}) (जिन्हें आगे "सलाहकार / द्वितीय पक्ष" कहा गया है)
+
+1. सेवाओं का कार्यक्षेत्र (SCOPE OF SERVICES):
+   सलाहकार कंपनी को निम्नलिखित व्यावसायिक एवं तकनीकी सेवाएं प्रदान करेगा:
+   "{{ scope_of_work }}"
+
+2. व्यावसायिक परामर्श शुल्क एवं भुगतान (FEES & REMUNERATION):
+   कंपनी सलाहकार को कुल ₹ {{ fee_amount }}/- का परामर्श शुल्क आयकर अधिनियम, 1961 की धारा 194J के तहत लागू टीडीएस (TDS) कटौती के पश्चात अदा करेगी।
+   भुगतान शर्तें: {{ payment_milestones }}।
+
+3. बौद्धिक संपदा का हस्तांतरण (IP ASSIGNMENT):
+   कॉपीराइट अधिनियम, 1957 की धारा 17 के अधीन, कार्य के दौरान तैयार की गई सभी रिपोर्ट, कोड, एल्गोरिदम और तकनीकी दस्तावेज कंपनी की अनन्य संपत्ति ("Work made for hire") माने जाएंगे।
+
+4. अनुबंध समाप्ति (TERMINATION):
+   कोई भी पक्ष {{ notice_period_days }} दिनों का लिखित नोटिस देकर इस अनुबंध को समाप्त कर सकता है।
+
+हस्ताक्षर कंपनी:
+________________________________________
+प्राधिकृत हस्ताक्षरकर्ता ({{ client_name }})
+
+हस्ताक्षर सलाहकार:
+________________________________________
+{{ consultant_name }}
+
+{% elif target_language == 'bilingual' %}
+INDEPENDENT CONSULTANT AGREEMENT / स्वतंत्र परामर्शदाता अनुबंध
+INDIAN CONTRACT ACT, 1872 / भारतीय अनुबंध अधिनियम, 1872
+========================================================================================================================
+
+Commencement Date / प्रारंभ तिथि: {{ effective_date_formatted }}
+
+PARTIES / पक्षकार:
+1. {{ client_name }} (Company / प्रथम पक्ष)
+2. {{ consultant_name }} (Consultant / द्वितीय पक्ष, PAN: {{ consultant_pan | default('N/A') }})
+
+1. SERVICES / सेवाएं:
+   "{{ scope_of_work }}"
+
+2. PROFESSIONAL FEES / व्यावसायिक परामर्श शुल्क:
+   Total Fee: ₹ {{ fee_amount }}/- subject to statutory TDS u/s 194J.
+   (कुल परामर्श शुल्क राशि ₹ {{ fee_amount }}/- देय होगी।)
+   Milestones / भुगतान शर्तें: {{ payment_milestones }}.
+
+3. IP ASSIGNMENT / बौद्धिक संपदा:
+   All deliverables vest solely with the Company pursuant to Section 17 of Copyright Act, 1957.
+   (सभी कार्य एवं बौद्धिक संपदा कंपनी की अनन्य संपत्ति होगी।)
+
+Signatures / हस्ताक्षर:
+______________________                      ______________________
+Company / कंपनी                             Consultant / सलाहकार
+
+{% else %}
+INDEPENDENT CONSULTANT & PROFESSIONAL SERVICES AGREEMENT
 PURSUANT TO THE INDIAN CONTRACT ACT, 1872 & SECTION 17 OF THE COPYRIGHT ACT, 1957
 ========================================================================================================================
 
@@ -680,7 +1236,7 @@ Authorized Signatory
 CONSULTANT:
 ________________________________________
 {{ consultant_name }}
-"""
+{% endif %}"""
     )
 }
 

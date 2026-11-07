@@ -281,11 +281,28 @@ export default function DraftingPage() {
     const nextValues = { ...formValues, target_language: lang };
     setFormValues(nextValues);
 
+    const langNotice =
+      lang === "hi"
+        ? "🌐 **दस्तावेज़ की भाषा बदलकर 'हिंदी (Devnagari)' कर दी गई है।**\n\nफॉर्म फ़ील्ड और कानूनी प्रारूप अब शुद्ध हिंदी में अद्यतन कर दिए गए हैं। आप नीचे विवरण प्रदान कर सकते हैं या दस्तावेज़ अपलोड कर सकते हैं।"
+        : lang === "bilingual"
+        ? "🌐 **Language updated to Bilingual (द्विभाषी - English + हिंदी).**\n\nLive preview and legal covenants now render in side-by-side English and Hindi."
+        : "🌐 **Language switched to English (Standard Legal).**\n\nLive document preview and field labels updated to English.";
+
+    setIntakeMessages((prev) => [
+      ...prev,
+      {
+        id: `lang_${Date.now()}`,
+        sender: "ai",
+        text: langNotice,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      },
+    ]);
+
     if (currentDraftId) {
       setPreviewLoading(true);
       try {
         await autosaveDraftInputs(currentDraftId, nextValues);
-        const updatedHtml = await getDraftPreview(currentDraftId);
+        const updatedHtml = await getDraftPreview(currentDraftId, lang);
         setPreviewHtml(updatedHtml);
       } catch (err) {
         console.warn("Failed to update language preview:", err);
@@ -317,7 +334,7 @@ export default function DraftingPage() {
       try {
         await autosaveDraftInputs(currentDraftId, next);
         setSaveStatus("saved");
-        const updatedPreview = await getDraftPreview(currentDraftId);
+        const updatedPreview = await getDraftPreview(currentDraftId, targetLanguage);
         setPreviewHtml(updatedPreview);
       } catch {
         setSaveStatus("idle");
@@ -375,7 +392,7 @@ export default function DraftingPage() {
       // Save to draft version and refresh live preview immediately
       if (currentDraftId) {
         await autosaveDraftInputs(currentDraftId, updatedInputs);
-        const updatedPreview = await getDraftPreview(currentDraftId);
+        const updatedPreview = await getDraftPreview(currentDraftId, targetLanguage);
         setPreviewHtml(updatedPreview);
       }
 
@@ -432,7 +449,7 @@ export default function DraftingPage() {
     try {
       // Ensure latest values are saved
       await autosaveDraftInputs(currentDraftId, formValues);
-      const res = await exportDraft(currentDraftId, format, true);
+      const res = await exportDraft(currentDraftId, format, true, targetLanguage);
       if (res.download_url) {
         window.open(res.download_url, "_blank");
       }
@@ -911,6 +928,7 @@ export default function DraftingPage() {
                         values={formValues}
                         onChange={handleFieldChange}
                         errors={formErrors}
+                        targetLanguage={targetLanguage}
                       />
                     </div>
                   </div>
@@ -939,7 +957,7 @@ export default function DraftingPage() {
                         if (!currentDraftId) return;
                         setPreviewLoading(true);
                         try {
-                          const updated = await getDraftPreview(currentDraftId);
+                          const updated = await getDraftPreview(currentDraftId, targetLanguage);
                           setPreviewHtml(updated);
                         } finally {
                           setPreviewLoading(false);

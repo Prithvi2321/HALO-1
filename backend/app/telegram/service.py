@@ -18,11 +18,14 @@ from app.workspace.model import (
     LegalMatter,
     CalendarEvent,
     Draft,
+    DraftVersion,
     MatterNote,
     now_utc,
 )
 from app.workspace.repository import TenantRepository
 from app.news.service import get_indian_legal_news, format_news_for_telegram
+from app.drafting.intake import generate_draft_package, resolve_template_id
+import json
 
 
 def escape_markdown_v2(text: str) -> str:
@@ -138,6 +141,8 @@ class TelegramGatewayService:
             return (
                 "⚖️ *Welcome to HALO (Nyaya Sahayak) Legal Gateway*\n\n"
                 "Commands:\n"
+                "• `/draft <type> <info>` — Instant court-ready legal auto-drafting & PDF export\n"
+                "• `/forms` — View supported legal instruments & drafting examples\n"
                 "• `/auth <6-digit-otp>` — Pair your mobile account\n"
                 "• `/news [topic]` — Live Indian court cases & legal updates\n"
                 "• `/agenda today|tomorrow|week` — Your court hearings & deadlines\n"
@@ -159,6 +164,10 @@ class TelegramGatewayService:
                 return "Please provide the 6-digit OTP code: `/auth 123456`"
             success, msg = cls.pair_with_otp(session, telegram_user_id, arg, username)
             return msg
+
+        if command in ["/draft", "/drafts", "/form", "/forms"]:
+            user_id = cls.get_paired_user_id(session, telegram_user_id)
+            return cls.handle_draft_command(session, user_id, arg, username)
 
         # Check authentication for remaining commands
         user_id = cls.get_paired_user_id(session, telegram_user_id)
@@ -290,4 +299,187 @@ class TelegramGatewayService:
             return "🔍 Legal research via Telegram is coming soon."
 
         return "Unknown command. Send `/help` for the list of available commands."
+
+    @classmethod
+    def handle_draft_command(
+        cls,
+        session: Session,
+        user_id: Optional[int],
+        arg: str,
+        username: Optional[str] = None
+    ) -> Any:
+        """
+        Handles /draft and /forms commands:
+        Extracts parameters, generates court-ready legal instrument with SHA-256 seal,
+        returns structured summary text and PDF file path for Telegram delivery.
+        """
+        if not arg or arg.strip().lower() in ["help", "list", "types", "menu", "templates"]:
+            return (
+                "📄 *HALO Instant Legal Auto-Drafting Studio*\n\n"
+                "Generate airtight, court-ready legal instruments with cryptographic SHA-256 seals directly from Telegram!\n\n"
+                "*How to use:*\n"
+                "Send: `/draft <type> <details>`\n\n"
+                "*Supported Form Types:*\n"
+                "• `rent` — Residential & Commercial Lease Agreement\n"
+                "• `138` — Section 138 Cheque Bounce 15-Day Demand Notice\n"
+                "• `nda` — Commercial Non-Disclosure Agreement\n"
+                "• `consultant` — Independent Consultant Engagement Agreement\n"
+                "• `director` — Board Resolution (Appoint Additional Director)\n\n"
+                "*Quick Examples:*\n"
+                "👉 `/draft rent Landlord Ramesh Sharma, tenant Priya Singh, rent ₹25,000, deposit ₹50,000, Flat 302 Mumbai, 11 months`\n"
+                "👉 `/draft 138 Payee Apex Supplies, Drawer Sunil Mehta, cheque 409218, amount ₹15,00,000, bank HDFC Bank, reason Funds Insufficient`\n"
+                "👉 `/draft nda Disclosing Alpha Tech, Receiving Beta Solutions, 2 years, Delhi`\n"
+                "👉 `/draft consultant Client Acme Corp, Consultant Dr. Arvind Nair, fee ₹1,50,000, scope Compliance Audit`\n\n"
+                "🌐 *Multilingual:* Add `language hindi` or `द्विभाषी` to render in Devnagari Hindi or Bilingual!"
+            )
+
+        # Handle type-specific help prompts
+        arg_clean = arg.strip().lower()
+        if arg_clean == "rent":
+            return (
+                "📄 *Rent / Lease Agreement Drafting*\n\n"
+                "Please provide details in one message, e.g.:\n"
+                "`/draft rent Landlord is Ramesh Sharma, tenant Rahul Verma, rent ₹28,000, deposit ₹60,000, Flat 402 Pune, 11 months, language Hindi`"
+            )
+        if arg_clean in ["138", "cheque", "bounce"]:
+            return (
+                "⚖️ *Section 138 Cheque Bounce Demand Notice*\n\n"
+                "Please provide cheque details, e.g.:\n"
+                "`/draft 138 Payee Apex Supplies, Drawer Sunil Mehta, cheque 409218, amount ₹15,00,000, bank HDFC Bank, reason Funds Insufficient`"
+            )
+        if arg_clean == "nda":
+            return (
+                "🔒 *Commercial Non-Disclosure Agreement (NDA)*\n\n"
+                "Please provide party details, e.g.:\n"
+                "`/draft nda Disclosing Alpha Tech, Receiving Beta Solutions, 2 years, Delhi`"
+            )
+        if arg_clean in ["consultant", "freelance"]:
+            return (
+                "💼 *Independent Consultant Agreement*\n\n"
+                "Please provide engagement details, e.g.:\n"
+                "`/draft consultant Client Acme Corp, Consultant Dr. Arvind Nair, fee ₹1,50,000, scope Software architecture advisory`"
+            )
+        if arg_clean in ["director", "board"]:
+            return (
+                "🏛️ *Board Resolution — Additional Director (S.161(1))*\n\n"
+                "Please provide resolution details, e.g.:\n"
+                "`/draft director Company Acme Tech, appointee Priya Sharma, DIN 08945612, venue Mumbai, chairman Rajesh Kumar`"
+            )
+
+        # Parse template and text
+        parts = arg.strip().split(maxsplit=1)
+        first_word = parts[0].lower()
+        rest = parts[1] if len(parts) > 1 else ""
+
+        resolved_from_first = resolve_template_id(first_word)
+        if resolved_from_first and rest:
+            target_tmpl = resolved_from_first
+            details_text = rest
+        else:
+            resolved_from_all = resolve_template_id(arg)
+            target_tmpl = resolved_from_all or "RENT_AGREEMENT_RESIDENTIAL_V1"
+            details_text = arg
+
+        try:
+            summary, pdf_path, _ = generate_draft_package(
+                query_or_template_id=target_tmpl,
+                details_text=details_text
+            )
+        except Exception as gen_err:
+            return f"⚠️ *Drafting Error:* {str(gen_err)}\n\nPlease try again with format: `/draft <type> <details>`"
+
+        # Build neat summary
+        title = summary["title"]
+        anchor = summary["statutory_anchor"]
+        lang = summary["language"]
+        content_hash = summary["content_sha256"]
+        inp = summary["inputs"]
+
+        lines = [
+            f"⚖️ *HALO Legal Auto-Drafting Engine*",
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            f"📋 *Instrument:* {title}",
+            f"🏛️ *Statutory Anchor:* {anchor}",
+            f"🌐 *Language:* {lang}",
+            f"",
+            f"*Key Parameters Extracted:*",
+        ]
+
+        if "landlord_name" in inp:
+            lines.append(f"• *Landlord / Lessor:* {inp['landlord_name']}")
+        if "tenant_name" in inp:
+            lines.append(f"• *Tenant / Lessee:* {inp['tenant_name']}")
+        if "payee_name" in inp:
+            lines.append(f"• *Payee (Client):* {inp['payee_name']}")
+        if "drawer_name" in inp:
+            lines.append(f"• *Accused / Drawer:* {inp['drawer_name']}")
+        if "disclosing_party" in inp:
+            lines.append(f"• *Disclosing Party:* {inp['disclosing_party']}")
+        if "receiving_party" in inp:
+            lines.append(f"• *Receiving Party:* {inp['receiving_party']}")
+        if "client_name" in inp:
+            lines.append(f"• *Client Organization:* {inp['client_name']}")
+        if "consultant_name" in inp:
+            lines.append(f"• *Consultant:* {inp['consultant_name']}")
+        if "director_name" in inp:
+            din_str = f" (DIN: {inp['director_din']})" if 'director_din' in inp else ""
+            lines.append(f"• *Appointee Director:* {inp['director_name']}{din_str}")
+
+        if "monthly_rent" in inp:
+            lines.append(f"• *Monthly Rent:* ₹ {inp['monthly_rent']:,}/-")
+        if "security_deposit" in inp:
+            lines.append(f"• *Security Deposit:* ₹ {inp['security_deposit']:,}/-")
+        if "cheque_amount" in inp:
+            lines.append(f"• *Cheque Amount:* ₹ {inp['cheque_amount']:,}/-")
+        if "fee_amount" in inp:
+            lines.append(f"• *Professional Fee:* ₹ {inp['fee_amount']:,}/-")
+
+        if "cheque_no" in inp:
+            lines.append(f"• *Cheque Number:* #{inp['cheque_no']}")
+        if "bank_name" in inp:
+            lines.append(f"• *Drawee Bank:* {inp['bank_name']}")
+        if "dishonour_reason" in inp:
+            lines.append(f"• *Dishonour Reason:* {inp['dishonour_reason']}")
+        if "tenure_months" in inp:
+            lines.append(f"• *Lease Period:* {inp['tenure_months']} Months")
+        if "duration_years" in inp:
+            lines.append(f"• *Confidentiality Term:* {inp['duration_years']} Years")
+        if "premises_address" in inp:
+            lines.append(f"• *Premises:* {inp['premises_address']}")
+
+        lines.extend([
+            f"",
+            f"🔒 *Cryptographic Seal:*",
+            f"SHA-256: `{content_hash[:32]}...`",
+        ])
+
+        # If user is paired, record draft in database
+        if user_id:
+            try:
+                repo = TenantRepository(session, firm_id="firm_default")
+                draft_record = Draft(
+                    firm_id="firm_default",
+                    template_id=summary["template_id"],
+                    title=f"{title} (via Telegram)",
+                    status="READY"
+                )
+                repo.create_draft(draft_record)
+                v = DraftVersion(
+                    draft_id=draft_record.id,
+                    version_no=1,
+                    input_json=json.dumps(inp),
+                    content_sha256=content_hash
+                )
+                repo.add_draft_version(v)
+                lines.append(f"\n💾 _Saved to your HALO workspace as Draft `{draft_record.id[:8]}`._")
+            except Exception:
+                pass
+
+        lines.append(f"\n📥 *Court-ready PDF with cryptographic seal is attached below!*")
+
+        return {
+            "text": "\n".join(lines),
+            "document_path": pdf_path,
+            "caption": f"📄 {title} — HALO Sealed PDF"
+        }
 

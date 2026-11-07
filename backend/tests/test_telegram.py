@@ -92,7 +92,34 @@ def test_telegram_pairing_and_commands(client: TestClient):
     })
     assert "Legal research via Telegram is coming soon" in res_ask.json()["reply_text"]
 
-    # 8. Unpair
+    # 8. Test /draft command menu
+    res_draft_menu = client.post("/api/v1/telegram/webhook", json={
+        "message": {
+            "from": {"id": 99887766},
+            "chat": {"id": 99887766},
+            "text": "/draft"
+        }
+    })
+    assert res_draft_menu.status_code == 200
+    assert "HALO Instant Legal Auto-Drafting" in res_draft_menu.json()["reply_text"]
+
+    # 9. Test /draft execution generating PDF and summary
+    res_draft_exec = client.post("/api/v1/telegram/webhook", json={
+        "message": {
+            "from": {"id": 99887766, "username": "adv_patil"},
+            "chat": {"id": 99887766},
+            "text": "/draft rent Landlord is Suresh Raina, tenant Alok Gupta, rent ₹32,000, deposit ₹64,000, Flat 501 Noida, 11 months"
+        }
+    })
+    assert res_draft_exec.status_code == 200
+    reply = res_draft_exec.json()["reply_text"]
+    assert "HALO Legal Auto-Drafting Engine" in reply
+    assert "Suresh Raina" in reply
+    assert "Alok Gupta" in reply
+    assert "32,000" in reply
+    assert "SHA-256" in reply
+
+    # 10. Unpair
     res_logout = client.post("/api/v1/telegram/webhook", json={
         "message": {
             "from": {"id": 99887766},

@@ -70,13 +70,16 @@ export async function generateDraft(draftId) {
   return data;
 }
 
-export async function getDraftPreview(draftId) {
-  const { data } = await api.get(`/drafts/${draftId}/preview`);
+export async function getDraftPreview(draftId, targetLanguage) {
+  const params = targetLanguage ? { target_language: targetLanguage } : {};
+  const { data } = await api.get(`/drafts/${draftId}/preview`, { params });
   return data;
 }
 
-export async function exportDraft(draftId, format = "pdf", allowPartial = true) {
-  const { data } = await api.post(`/drafts/${draftId}/exports`, { format, allow_partial: allowPartial });
+export async function exportDraft(draftId, format = "pdf", allowPartial = true, targetLanguage) {
+  const payload = { format, allow_partial: allowPartial };
+  if (targetLanguage) payload.target_language = targetLanguage;
+  const { data } = await api.post(`/drafts/${draftId}/exports`, payload);
   return data;
 }
 

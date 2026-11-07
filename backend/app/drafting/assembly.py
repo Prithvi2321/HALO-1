@@ -106,8 +106,13 @@ def normalize_context(template: TemplateManifest, raw_inputs: Dict[str, Any]) ->
         except Exception:
             pass
 
-    # Ensure target_language has a default
-    if "target_language" not in ctx or not ctx["target_language"]:
+    # Ensure target_language has a valid normalized value ('en', 'hi', 'bilingual')
+    tl = str(ctx.get("target_language", "")).lower().strip()
+    if tl in ["hi", "hindi", "devnagari"]:
+        ctx["target_language"] = "hi"
+    elif tl in ["bilingual", "bi", "dual"]:
+        ctx["target_language"] = "bilingual"
+    else:
         ctx["target_language"] = "en"
 
     # Cheque / Rent / Fee / Amount fields normalization
@@ -151,6 +156,8 @@ def assemble_document(template_id: str, input_data: Dict[str, Any], allow_partia
     if allow_partial:
         for f in tmpl.schema_definition.get("fields", []):
             f_id = f.get("id")
+            if f_id == "target_language":
+                continue
             if f_id not in effective_inputs or effective_inputs[f_id] is None or effective_inputs[f_id] == "":
                 effective_inputs[f_id] = f"[Pending: {f.get('label', f_id)}]"
 

@@ -177,3 +177,15 @@ def test_draft_lifecycle_endpoints(client: TestClient):
     dl_res = client.get(exp_data["download_url"])
     assert dl_res.status_code == 200
     assert dl_res.headers["content-type"] == "application/pdf"
+
+    # 7. Multilingual Hindi Preview check
+    prev_hi_res = client.get(f"/api/v1/drafts/{draft_id}/preview?target_language=hi")
+    assert prev_hi_res.status_code == 200
+    # Must contain Hindi text for director appointment resolution
+    assert "निदेशक मंडल" in prev_hi_res.text or "अतिरिक्त निदेशक" in prev_hi_res.text
+
+    # 8. Multilingual Bilingual Preview check
+    prev_bi_res = client.get(f"/api/v1/drafts/{draft_id}/preview?target_language=bilingual")
+    assert prev_bi_res.status_code == 200
+    assert "CERTIFIED TRUE COPY" in prev_bi_res.text
+    assert "प्रमाणित प्रतिलिपि" in prev_bi_res.text
